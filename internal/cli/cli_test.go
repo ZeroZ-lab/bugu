@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestMain(t *testing.T) {
+func TestHelpVersionAndUnknown(t *testing.T) {
 	tests := []struct {
 		name       string
 		args       []string

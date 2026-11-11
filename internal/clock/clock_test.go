@@ -39,10 +39,15 @@ func TestFakeAfterFiresOnAdvance(t *testing.T) {
 func TestFakeSetJumpWakesAll(t *testing.T) {
 	f := NewFake(start)
 	a, b := f.After(time.Hour), f.After(3*time.Hour)
-	f.Set(start.Add(24 * time.Hour))
+	woke := start.Add(24 * time.Hour)
+	f.Set(woke)
 	for name, ch := range map[string]<-chan time.Time{"a": a, "b": b} {
 		select {
-		case <-ch:
+		case got := <-ch:
+			// 与真实定时器一致:收到的是醒来时的时间,而不是原定的到期时间。
+			if !got.Equal(woke) {
+				t.Errorf("%s 收到 %v,期望 %v", name, got, woke)
+			}
 		default:
 			t.Errorf("%s 没有被唤醒", name)
 		}

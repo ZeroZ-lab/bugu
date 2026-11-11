@@ -120,6 +120,21 @@ func TestImportDirection(t *testing.T) {
 	}
 }
 
+// 硬规则 1:不使用 cgo。CGO_ENABLED=0 时带 import "C" 的文件会被静默跳过,所以单独检查。
+func TestNoCgo(t *testing.T) {
+	for _, file := range goFiles(t) {
+		f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, filepath.FromSlash(file)), nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, imp := range f.Imports {
+			if imp.Path.Value == `"C"` {
+				t.Errorf("%s: 使用了 cgo", file)
+			}
+		}
+	}
+}
+
 // 硬规则 3:厂商和产品的名字只出现在 runners/ 的配置里,不出现在 Go 代码中。
 func TestNoVendorNamesInGoCode(t *testing.T) {
 	vendor := regexp.MustCompile(`(?i)claude|codex|anthropic|openai|gemini|opencode`)
@@ -137,7 +152,8 @@ func TestNoVendorNamesInGoCode(t *testing.T) {
 
 // 硬规则 4 和 5:时间只通过 internal/clock 获取,测试也不依赖真实时间。
 func TestNoDirectTime(t *testing.T) {
-	direct := regexp.MustCompile(`\btime\.(Now|Sleep|After|AfterFunc|NewTimer|NewTicker|Tick|Since|Until)\(`)
+	// context 的超时和截止时间内部使用真实时钟,同样会绕过注入。
+	direct := regexp.MustCompile(`\b(time\.(Now|Sleep|After|AfterFunc|NewTimer|NewTicker|Tick|Since|Until)|context\.With(Timeout|Deadline)(Cause)?)\(`)
 	exempt := []string{"clock", "fakeagent", "archtest"}
 	for _, file := range goFiles(t) {
 		if slices.Contains(exempt, internalPkg(file)) {

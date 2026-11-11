@@ -98,12 +98,21 @@ func (f *Fake) NewTimer(d time.Duration) Timer {
 }
 
 // Advance 把时间向前推进 d,并唤醒到期的等待者,按到期时间先后。
-func (f *Fake) Advance(d time.Duration) { f.Set(f.Now().Add(d)) }
+func (f *Fake) Advance(d time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.set(f.now.Add(d))
+}
 
 // Set 把时间跳到 t,用于模拟睡眠唤醒或改时间。t 早于当前时间时不唤醒任何等待者。
 func (f *Fake) Set(t time.Time) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.set(t)
+}
+
+// set 要求调用者已持有锁。等待者收到的是被唤醒时的当前时间,与真实定时器一致。
+func (f *Fake) set(t time.Time) {
 	f.now = t
 	sort.SliceStable(f.waiters, func(i, j int) bool { return f.waiters[i].at.Before(f.waiters[j].at) })
 	rest := f.waiters[:0]
@@ -113,7 +122,7 @@ func (f *Fake) Set(t time.Time) {
 			continue
 		}
 		w.active = false
-		w.ch <- w.at
+		w.ch <- t
 	}
 	f.waiters = rest
 	f.changed.Broadcast()
