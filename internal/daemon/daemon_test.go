@@ -279,7 +279,11 @@ func TestO3InterruptedOnShutdownAndAfterCrash(t *testing.T) {
 	}
 
 	// 模拟崩溃:留下一条没有收尾的记录。
-	crashed := task.Run{ID: store.NewRunID(at(11, 4, 0)), Task: "slow", Status: task.Running, CreatedAt: at(11, 4, 0)}
+	id, err := st.NewRunID(at(11, 4, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	crashed := task.Run{ID: id, Task: "slow", Status: task.Running, CreatedAt: at(11, 4, 0)}
 	if err := st.CreateRun(crashed, task.Task{Name: "slow"}); err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +408,7 @@ func TestInvalidDefinitionsAndMissingObjects(t *testing.T) {
 		"SetPaused": second(d.engine.SetPaused("nope", true)),
 		"RunNow":    second(d.engine.RunNow("nope", "")),
 		"Run":       second(d.engine.Run("nope")),
-		"Logs":      second(d.engine.Logs("20261111T020000-00000000")),
+		"Logs":      second(d.engine.Logs("20261111T020000-000000")),
 	} {
 		if code(err) != api.CodeNotFound {
 			t.Errorf("%s: err=%v", name, err)

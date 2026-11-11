@@ -23,6 +23,47 @@ func open(t *testing.T) *Store {
 	return s
 }
 
+func newID(t *testing.T, s *Store, now time.Time) string {
+	t.Helper()
+	id, err := s.NewRunID(now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// 运行编号严格递增:同一秒内的多次运行、重新打开数据目录、时钟回拨都不打乱"最新的在前"。
+func TestRunIDsAlwaysIncrease(t *testing.T) {
+	s := open(t)
+	var ids []string
+	add := func(s *Store, now time.Time) {
+		id := newID(t, s, now)
+		if err := s.CreateRun(task.Run{ID: id, Task: "a", Status: task.Succeeded}, backup("a")); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	add(s, epoch)
+	add(s, epoch)
+	add(s, epoch.Add(500*time.Millisecond))
+	reopened, err := Open(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	add(reopened, epoch)                 // 重启后仍在同一秒
+	add(reopened, epoch.Add(-time.Hour)) // 时钟被拨回
+	add(reopened, epoch.Add(time.Second))
+	for i := 1; i < len(ids); i++ {
+		if ids[i] <= ids[i-1] {
+			t.Fatalf("编号没有递增: %v", ids)
+		}
+	}
+	runs, err := reopened.ListRuns("", 0)
+	if err != nil || len(runs) != len(ids) || runs[0].ID != ids[len(ids)-1] || runs[len(runs)-1].ID != ids[0] {
+		t.Fatalf("runs=%+v err=%v", runs, err)
+	}
+}
+
 func backup(name string) task.Task {
 	return task.Task{
 		Name:    name,
@@ -81,7 +122,7 @@ func TestO1O11RunArchiveAndSnapshot(t *testing.T) {
 	if err := s.SaveTask(original); err != nil {
 		t.Fatal(err)
 	}
-	r := task.Run{ID: NewRunID(epoch), Task: "backup", Status: task.Running, Trigger: task.BySchedule, CreatedAt: epoch}
+	r := task.Run{ID: newID(t, s, epoch), Task: "backup", Status: task.Running, Trigger: task.BySchedule, CreatedAt: epoch}
 	if err := s.CreateRun(r, original); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +164,7 @@ func TestListRunsNewestFirstWithFilterAndLimit(t *testing.T) {
 	var ids []string
 	for i, name := range []string{"a", "b", "a", "a"} {
 		at := epoch.Add(time.Duration(i) * time.Hour)
-		r := task.Run{ID: NewRunID(at), Task: name, Status: task.Succeeded, CreatedAt: at}
+		r := task.Run{ID: newID(t, s, at), Task: name, Status: task.Succeeded, CreatedAt: at}
 		if err := s.CreateRun(r, backup(name)); err != nil {
 			t.Fatal(err)
 		}
@@ -142,8 +183,8 @@ func TestListRunsNewestFirstWithFilterAndLimit(t *testing.T) {
 // O3: 后台异常退出后,停留在运行中的记录在下次启动时标为中断;已结束的不受影响。
 func TestO3InterruptUnfinishedRuns(t *testing.T) {
 	s := open(t)
-	running := task.Run{ID: NewRunID(epoch), Task: "a", Status: task.Running, CreatedAt: epoch}
-	done := task.Run{ID: NewRunID(epoch.Add(time.Hour)), Task: "a", Status: task.Succeeded, CreatedAt: epoch}
+	running := task.Run{ID: newID(t, s, epoch), Task: "a", Status: task.Running, CreatedAt: epoch}
+	done := task.Run{ID: newID(t, s, epoch.Add(time.Hour)), Task: "a", Status: task.Succeeded, CreatedAt: epoch}
 	for _, r := range []task.Run{running, done} {
 		if err := s.CreateRun(r, backup("a")); err != nil {
 			t.Fatal(err)

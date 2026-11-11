@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"bugu/internal/task"
@@ -27,7 +29,14 @@ var ErrNotFound = errors.New("store: not found")
 //	runs/<运行编号>/task.json  运行开始时的任务配置快照
 //	runs/<运行编号>/stdout.log、stderr.log
 //	state.json                每个任务已评估到的时间点
-type Store struct{ dir string }
+type Store struct {
+	dir string
+
+	mu        sync.Mutex
+	idLoaded  bool
+	lastStamp string // 最近一个运行编号的时间部分
+	lastSeq   int    // 以及序号部分
+}
 
 // Open 打开数据目录,不存在时创建。目录只对当前用户开放,因为其中有令牌和任务输出。
 func Open(dir string) (*Store, error) {
@@ -98,15 +107,33 @@ func (s *Store) DeleteTask(name string) error {
 	return nil
 }
 
-var runIDPattern = regexp.MustCompile(`^[0-9]{8}T[0-9]{6}-[0-9a-f]{8}$`)
+var runIDPattern = regexp.MustCompile(`^([0-9]{8}T[0-9]{6})-([0-9]{6})$`)
 
-// NewRunID 生成运行编号:UTC 时间加随机后缀,按字典序排列即按时间排列。
-func NewRunID(now time.Time) string {
-	var b [4]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic(err) // crypto/rand 不会失败
+// NewRunID 生成运行编号:UTC 时间加同一秒内的序号。编号严格递增,按字典序排列即按创建顺序排列;
+// 同一秒内的多次运行、重启、时钟回拨都不会打乱顺序。
+func (s *Store) NewRunID(now time.Time) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.idLoaded {
+		entries, err := os.ReadDir(filepath.Join(s.dir, "runs"))
+		if err != nil {
+			return "", err
+		}
+		for _, e := range slices.Backward(entries) {
+			if m := runIDPattern.FindStringSubmatch(e.Name()); m != nil {
+				s.lastStamp = m[1]
+				s.lastSeq, _ = strconv.Atoi(m[2])
+				break
+			}
+		}
+		s.idLoaded = true
 	}
-	return now.UTC().Format("20060102T150405") + "-" + hex.EncodeToString(b[:])
+	if stamp := now.UTC().Format("20060102T150405"); stamp > s.lastStamp {
+		s.lastStamp, s.lastSeq = stamp, 0
+	} else {
+		s.lastSeq++
+	}
+	return fmt.Sprintf("%s-%06d", s.lastStamp, s.lastSeq), nil
 }
 
 func (s *Store) runDir(id string) (string, error) {

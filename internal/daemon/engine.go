@@ -122,8 +122,12 @@ func (e *engine) setSince(name string, at time.Time) bool {
 // 同一任务上一次还没结束时,定时触发记为跳过(S5),手动触发直接报冲突。
 func (e *engine) start(t task.Task, trigger string, scheduledFor time.Time, note, key string) (task.Run, error) {
 	now := e.clock.Now()
+	id, err := e.store.NewRunID(now)
+	if err != nil {
+		return task.Run{}, err
+	}
 	r := task.Run{
-		ID: store.NewRunID(now), Task: t.Name, Trigger: trigger, ScheduledFor: scheduledFor,
+		ID: id, Task: t.Name, Trigger: trigger, ScheduledFor: scheduledFor,
 		Note: note, RequestKey: key, CreatedAt: now,
 	}
 	if busy, ok := e.running[t.Name]; ok {
