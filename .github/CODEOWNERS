@@ -1,0 +1,9 @@
+# 这些文件的改动必须由人审核。建好 GitHub 仓库后,把下面各行开头的 "# " 去掉,
+# 并把 OWNER 换成维护者的 GitHub 用户名,再在仓库设置里开启主分支保护。
+#
+# /AGENTS.md              OWNER
+# /docs/PRD.md            OWNER
+# /docs/adr/              OWNER
+# /internal/archtest/     OWNER
+# /internal/server/       OWNER
+# /.github/               OWNER
