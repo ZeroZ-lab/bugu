@@ -36,21 +36,21 @@ const DefaultMaxOutput = 1 << 20
 // Validate 报告执行器能否执行该任务,不启动任何进程。创建和修改任务时用它提前拒绝。
 func Validate(t task.Task) error {
 	if len(t.Steps) != 1 {
-		return errors.New("exec: exactly one script step is supported")
+		return errors.New("目前只支持恰好一个脚本步骤")
 	}
 	s := t.Steps[0]
 	if s.Type != task.StepScript {
-		return fmt.Errorf("exec: unsupported step type %q", s.Type)
+		return fmt.Errorf("不支持的步骤类型 %q,目前只支持 script", s.Type)
 	}
 	if (s.Script.Path == "") == (s.Script.Command == "") {
-		return errors.New("exec: specify exactly one script path or command")
+		return errors.New("脚本步骤必须在 path 和 command 之间二选一")
 	}
 	if t.Timeout < 0 {
-		return errors.New("exec: timeout must not be negative")
+		return errors.New("timeout 不能为负")
 	}
 	for k, v := range t.Env {
 		if k == "" || strings.ContainsAny(k, "=\x00") || strings.ContainsRune(v, '\x00') {
-			return fmt.Errorf("exec: invalid environment variable %q", k)
+			return fmt.Errorf("环境变量 %q 不合法:名字不能为空或包含 =,名字和值都不能包含空字符", k)
 		}
 	}
 	return nil
