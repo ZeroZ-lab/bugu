@@ -1,7 +1,6 @@
 package exec
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -24,7 +23,38 @@ const outputGrace = 2 * time.Second
 // macOS/Linux 通过进程组清理普通后代；主动脱离进程组的程序不受此保证。
 // 这类程序若仍持有输出管道，执行器在父进程回收后最多再等 outputGrace 就停止采集：
 // 运行状态和退出码仍是父进程的真实结果，此后写入的输出不再采集。
-type Executor struct{ Clock clock.Clock }
+type Executor struct {
+	Clock clock.Clock
+	// MaxOutput 是标准输出和标准错误各自保留的字节数上限,0 表示使用 DefaultMaxOutput。
+	// 超出时保留开头和结尾,中间用一行说明代替。
+	MaxOutput int
+}
+
+// DefaultMaxOutput 是每路输出默认保留的字节数。
+const DefaultMaxOutput = 1 << 20
+
+// Validate 报告执行器能否执行该任务,不启动任何进程。创建和修改任务时用它提前拒绝。
+func Validate(t task.Task) error {
+	if len(t.Steps) != 1 {
+		return errors.New("exec: exactly one script step is supported")
+	}
+	s := t.Steps[0]
+	if s.Type != task.StepScript {
+		return fmt.Errorf("exec: unsupported step type %q", s.Type)
+	}
+	if (s.Script.Path == "") == (s.Script.Command == "") {
+		return errors.New("exec: specify exactly one script path or command")
+	}
+	if t.Timeout < 0 {
+		return errors.New("exec: timeout must not be negative")
+	}
+	for k, v := range t.Env {
+		if k == "" || strings.ContainsAny(k, "=\x00") || strings.ContainsRune(v, '\x00') {
+			return fmt.Errorf("exec: invalid environment variable %q", k)
+		}
+	}
+	return nil
+}
 
 // Run 验证后启动进程，并等待输出采集完毕。非零退出、取消及超时均返回错误。
 // 当前仅支持一个脚本步骤，触发及通知由调用层处理。
@@ -33,19 +63,10 @@ func (e Executor) Run(ctx context.Context, t task.Task) (r task.Run, err error) 
 	if e.Clock == nil {
 		return r, errors.New("exec: clock is required")
 	}
-	if len(t.Steps) != 1 {
-		return r, errors.New("exec: exactly one script step is supported")
+	if err := Validate(t); err != nil {
+		return r, err
 	}
 	s := t.Steps[0]
-	if s.Type != task.StepScript {
-		return r, fmt.Errorf("exec: unsupported step type %q", s.Type)
-	}
-	if (s.Script.Path == "") == (s.Script.Command == "") {
-		return r, errors.New("exec: specify exactly one script path or command")
-	}
-	if t.Timeout < 0 {
-		return r, errors.New("exec: timeout must not be negative")
-	}
 	if err := ctx.Err(); err != nil {
 		r.Status = task.Canceled
 		return r, err
@@ -72,11 +93,6 @@ func (e Executor) Run(ctx context.Context, t task.Task) (r task.Run, err error) 
 		path, err = filepath.Abs(path)
 		if err != nil {
 			return r, err
-		}
-	}
-	for k, v := range t.Env {
-		if k == "" || strings.ContainsAny(k, "=\x00") || strings.ContainsRune(v, '\x00') {
-			return r, fmt.Errorf("exec: invalid environment variable %q", k)
 		}
 	}
 	argv := []string{path}
@@ -109,7 +125,7 @@ func (e Executor) Run(ctx context.Context, t task.Task) (r task.Run, err error) 
 	var timeout <-chan time.Time
 	stopTimeout := func() {}
 	if t.Timeout > 0 {
-		timer := e.Clock.NewTimer(t.Timeout)
+		timer := e.Clock.NewTimer(time.Duration(t.Timeout))
 		stopTimeout = func() { timer.Stop() }
 		timeout = timer.C()
 	}
@@ -121,7 +137,11 @@ func (e Executor) Run(ctx context.Context, t task.Task) (r task.Run, err error) 
 	r.Status = task.Running
 	outW.Close()
 	errW.Close()
-	var out, errOut bytes.Buffer
+	limit := e.MaxOutput
+	if limit <= 0 {
+		limit = DefaultMaxOutput
+	}
+	out, errOut := capture{limit: limit}, capture{limit: limit}
 	readDone := make(chan error, 2)
 	go func() { _, err := io.Copy(&out, outR); readDone <- err }()
 	go func() { _, err := io.Copy(&errOut, errR); readDone <- err }()
@@ -219,4 +239,35 @@ func collectOutput(grace <-chan time.Time, done <-chan error, closeReaders func(
 		}
 	}
 	return err
+}
+
+// capture 采集一路输出,超过上限时只保留开头和结尾(O2),内存占用不随输出增长。
+type capture struct {
+	limit      int
+	head, tail []byte
+	dropped    int64
+}
+
+func (c *capture) Write(p []byte) (int, error) {
+	n := len(p)
+	if room := c.limit/2 - len(c.head); room > 0 {
+		k := min(room, len(p))
+		c.head = append(c.head, p[:k]...)
+		p = p[k:]
+	}
+	c.tail = append(c.tail, p...)
+	// 攒到一个上限再裁到一半,避免每次写入都搬动整段结尾。
+	if len(c.tail) > c.limit {
+		cut := len(c.tail) - c.limit/2
+		c.dropped += int64(cut)
+		c.tail = append(c.tail[:0], c.tail[cut:]...)
+	}
+	return n, nil
+}
+
+func (c *capture) String() string {
+	if c.dropped == 0 {
+		return string(c.head) + string(c.tail)
+	}
+	return fmt.Sprintf("%s\n[bugu: 输出过大,此处省略 %d 字节]\n%s", c.head, c.dropped, c.tail)
 }

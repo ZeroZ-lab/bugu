@@ -1,0 +1,70 @@
+package task
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+)
+
+// T1: 任务按"触发、步骤列表、通知列表"存储,序列化后能原样读回。
+func TestT1TaskRoundTripsThroughJSON(t *testing.T) {
+	in := Task{
+		Name:    "backup",
+		Trigger: Trigger{Cron: "0 2 * * *"},
+		Steps:   []Step{{Type: StepScript, Script: Script{Command: "~/bin/backup.sh"}}},
+		Env:     map[string]string{"A": "b"},
+		Timeout: Duration(90 * time.Minute),
+	}
+	b, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"timeout":"1h30m0s"`) || strings.Contains(string(b), `"at"`) {
+		t.Fatalf("序列化结果不符合预期: %s", b)
+	}
+	var out Task
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := json.Marshal(out)
+	if string(again) != string(b) {
+		t.Fatalf("读回后不一致:\n%s\n%s", b, again)
+	}
+}
+
+func TestDurationRejectsBadInput(t *testing.T) {
+	var d Duration
+	for _, in := range []string{`90`, `"soon"`} {
+		if err := json.Unmarshal([]byte(in), &d); err == nil {
+			t.Errorf("%s 应被拒绝", in)
+		}
+	}
+	if err := json.Unmarshal([]byte(`""`), &d); err != nil || d != 0 {
+		t.Errorf("空字符串应表示不设上限: %v %v", d, err)
+	}
+}
+
+// T1/S1/S2: 名字要能安全地用作文件名;触发在 cron 和一次性时间点之间二选一。
+func TestT1S1S2Validate(t *testing.T) {
+	at := time.Date(2026, 11, 12, 2, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		task Task
+		ok   bool
+	}{
+		{"cron", Task{Name: "backup", Trigger: Trigger{Cron: "0 2 * * *"}}, true},
+		{"一次性", Task{Name: "once_1", Trigger: Trigger{At: at}}, true},
+		{"没有触发", Task{Name: "backup"}, false},
+		{"两种触发都填", Task{Name: "backup", Trigger: Trigger{Cron: "0 2 * * *", At: at}}, false},
+		{"空名字", Task{Trigger: Trigger{Cron: "0 2 * * *"}}, false},
+		{"路径穿越", Task{Name: "../x", Trigger: Trigger{Cron: "0 2 * * *"}}, false},
+		{"带点", Task{Name: "a.b", Trigger: Trigger{Cron: "0 2 * * *"}}, false},
+		{"过长", Task{Name: strings.Repeat("a", 65), Trigger: Trigger{Cron: "0 2 * * *"}}, false},
+	}
+	for _, tt := range tests {
+		if err := Validate(tt.task); (err == nil) != tt.ok {
+			t.Errorf("%s: err=%v,期望通过=%v", tt.name, err, tt.ok)
+		}
+	}
+}

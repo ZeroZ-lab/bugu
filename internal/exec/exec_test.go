@@ -55,7 +55,7 @@ func TestT1T3RejectUnsupportedTasks(t *testing.T) {
 		{Steps: []task.Step{{Type: task.StepScript}}},
 		{Steps: []task.Step{{Type: task.StepScript, Script: task.Script{Path: agent, Command: "false"}}}},
 	} {
-		r, err := (Executor{clock.NewFake(epoch)}).Run(context.Background(), input)
+		r, err := (Executor{Clock: clock.NewFake(epoch)}).Run(context.Background(), input)
 		if err == nil || r.Status != task.Failed || r.ExitCode != nil || !r.StartedAt.IsZero() {
 			t.Fatalf("result=%+v error=%v", r, err)
 		}
@@ -67,7 +67,7 @@ func TestT3E2O1CommandCwdEnvironment(t *testing.T) {
 	t.Setenv("BUGU_EXEC_TEST", "inherited")
 	input := task.Task{Cwd: dir, Env: map[string]string{"BUGU_EXEC_TEST": "overridden", "BUGU_ADDED": "value"}, Steps: []task.Step{{Type: task.StepScript, Script: task.Script{Command: "printf '%s|%s|%s' \"$PWD\" \"$BUGU_EXEC_TEST\" \"$BUGU_ADDED\"; printf error >&2; exit 7"}}}}
 	f := clock.NewFake(epoch)
-	r, err := (Executor{f}).Run(context.Background(), input)
+	r, err := (Executor{Clock: f}).Run(context.Background(), input)
 	if err == nil || r.Status != task.Failed || r.ExitCode == nil || *r.ExitCode != 7 {
 		t.Fatalf("result=%+v err=%v", r, err)
 	}
@@ -98,9 +98,9 @@ func TestT3O1PathWithSpacesAndLargeCompleteOutput(t *testing.T) {
 	}
 	input := script(path)
 	input.Env = map[string]string{"FAKEAGENT_OUTPUT": strings.Repeat("o", 1023), "FAKEAGENT_STDERR": strings.Repeat("e", 1023), "FAKEAGENT_REPEAT": "256"}
-	input.Timeout = time.Hour
+	input.Timeout = task.Duration(time.Hour)
 	f := clock.NewFake(epoch)
-	r, err := (Executor{f}).Run(context.Background(), input)
+	r, err := (Executor{Clock: f}).Run(context.Background(), input)
 	if err != nil || r.Status != task.Succeeded || r.ExitCode == nil || *r.ExitCode != 0 {
 		t.Fatalf("status=%s err=%v", r.Status, err)
 	}
@@ -115,12 +115,12 @@ func TestT3O1PathWithSpacesAndLargeCompleteOutput(t *testing.T) {
 func TestE5ClosedInputAndO1StartFailure(t *testing.T) {
 	input := script(agent)
 	input.Env = map[string]string{"FAKEAGENT_ASK": "1"}
-	r, err := (Executor{clock.NewFake(epoch)}).Run(context.Background(), input)
+	r, err := (Executor{Clock: clock.NewFake(epoch)}).Run(context.Background(), input)
 	if err == nil || r.ExitCode == nil || *r.ExitCode != 3 || !strings.Contains(r.Stderr, "无法确认") {
 		t.Fatalf("result=%+v err=%v", r, err)
 	}
 	input = script(filepath.Join(t.TempDir(), "missing"))
-	r, err = (Executor{clock.NewFake(epoch)}).Run(context.Background(), input)
+	r, err = (Executor{Clock: clock.NewFake(epoch)}).Run(context.Background(), input)
 	if err == nil || r.ExitCode != nil || r.Status != task.Failed {
 		t.Fatalf("result=%+v err=%v", r, err)
 	}
@@ -157,11 +157,11 @@ func TestE3O3TimeoutCancelAndParentExitCleanDescendants(t *testing.T) {
 			if mode == "parent_exit" {
 				input.Env["FAKEAGENT_PARENT_EXIT"] = "1"
 			}
-			input.Timeout = time.Hour
+			input.Timeout = task.Duration(time.Hour)
 			f := clock.NewFake(epoch)
 			ctx, cancel := context.WithCancel(context.Background())
 			done := make(chan outcome, 1)
-			go func() { r, err := (Executor{f}).Run(ctx, input); done <- outcome{r, err} }()
+			go func() { r, err := (Executor{Clock: f}).Run(ctx, input); done <- outcome{r, err} }()
 			var got outcome
 			received := false
 			t.Cleanup(func() {
@@ -216,7 +216,7 @@ func TestE3O3TimeoutCancelAndParentExitCleanDescendants(t *testing.T) {
 func TestE3O3AlreadyCanceledDoesNotStart(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	r, err := (Executor{clock.NewFake(epoch)}).Run(ctx, script(agent))
+	r, err := (Executor{Clock: clock.NewFake(epoch)}).Run(ctx, script(agent))
 	if err != context.Canceled || r.Status != task.Canceled || !r.StartedAt.IsZero() {
 		t.Fatalf("result=%+v err=%v", r, err)
 	}
@@ -236,7 +236,7 @@ func TestT3E2RelativeFilePathAndHomeExpansion(t *testing.T) {
 	for _, scriptPath := range []string{"local-script", "~/work/local-script"} {
 		input := script(scriptPath)
 		input.Cwd = "~/work"
-		r, err := (Executor{clock.NewFake(epoch)}).Run(context.Background(), input)
+		r, err := (Executor{Clock: clock.NewFake(epoch)}).Run(context.Background(), input)
 		if err != nil || r.Stdout != "local" || !reflect.DeepEqual(r.Command, []string{path}) {
 			t.Fatalf("result=%+v err=%v", r, err)
 		}
@@ -247,7 +247,7 @@ func TestE2InvalidEnvironmentFailsBeforeStarting(t *testing.T) {
 	for key, value := range map[string]string{"": "x", "A=B": "x", "NUL\x00": "x", "VALUE": "a\x00b"} {
 		input := script(agent)
 		input.Env = map[string]string{key: value}
-		r, err := (Executor{clock.NewFake(epoch)}).Run(context.Background(), input)
+		r, err := (Executor{Clock: clock.NewFake(epoch)}).Run(context.Background(), input)
 		if err == nil || !r.StartedAt.IsZero() || r.ExitCode != nil {
 			t.Fatalf("result=%+v err=%v", r, err)
 		}
@@ -262,7 +262,7 @@ func TestE3O1O3EscapedDescendantEndsCollectionAfterGrace(t *testing.T) {
 	input.Env = map[string]string{"FAKEAGENT_HANG": "1", "FAKEAGENT_CHILD": "1", "FAKEAGENT_CHILD_DETACH": "1", "FAKEAGENT_PARENT_EXIT": "1", "FAKEAGENT_READY": path}
 	f := clock.NewFake(epoch)
 	done := make(chan outcome, 1)
-	go func() { r, err := (Executor{f}).Run(context.Background(), input); done <- outcome{r, err} }()
+	go func() { r, err := (Executor{Clock: f}).Run(context.Background(), input); done <- outcome{r, err} }()
 	var parent, child int
 	if _, err := fmt.Sscan(<-readyCh, &parent, &child); err != nil || parent == 0 || child == 0 {
 		t.Fatalf("bad ready: parent=%d child=%d err=%v", parent, child, err)
@@ -283,5 +283,36 @@ func TestE3O1O3EscapedDescendantEndsCollectionAfterGrace(t *testing.T) {
 	}
 	if !strings.Contains(got.run.Stdout, "fakeagent: child") || !got.run.FinishedAt.Equal(epoch) || f.Waiters() != 0 {
 		t.Fatalf("stdout=%q finished=%v timers=%d", got.run.Stdout, got.run.FinishedAt, f.Waiters())
+	}
+}
+
+// O2: 输出超过上限时保留开头和结尾,并说明省略了多少。
+func TestO2LargeOutputKeepsHeadAndTail(t *testing.T) {
+	input := script(agent)
+	line := strings.Repeat("x", 99)
+	input.Env = map[string]string{"FAKEAGENT_OUTPUT": line, "FAKEAGENT_REPEAT": "1000"}
+	r, err := (Executor{Clock: clock.NewFake(epoch), MaxOutput: 1000}).Run(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := strings.Repeat(line+"\n", 1000)
+	if !strings.HasPrefix(r.Stdout, full[:500]) || !strings.HasSuffix(r.Stdout, full[len(full)-500:]) {
+		t.Fatalf("开头或结尾没有保留: %q", r.Stdout)
+	}
+	// 结尾最多攒到一个上限,所以总长不超过上限的 1.5 倍加上说明行。
+	if !strings.Contains(r.Stdout, "[bugu: 输出过大,此处省略 ") || len(r.Stdout) > 1700 {
+		t.Fatalf("len=%d", len(r.Stdout))
+	}
+}
+
+func TestO2CaptureAccountsForEveryByte(t *testing.T) {
+	c := capture{limit: 10}
+	total := 0
+	for i := range 50 {
+		n, _ := c.Write([]byte(strings.Repeat("a", i%7+1)))
+		total += n
+	}
+	if got := len(c.head) + len(c.tail) + int(c.dropped); got != total {
+		t.Fatalf("保留加省略 = %d,写入 = %d", got, total)
 	}
 }

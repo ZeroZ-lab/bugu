@@ -1,4 +1,3 @@
-// Package store 持久化任务文件和运行记录。
-//
-// 尚未实现。职责和可引用的包见 docs/ARCHITECTURE.md。
+// Package store 负责任务文件、运行存档、调度进度和本机凭证文件的持久化。
+// 全部数据是数据目录下的普通文件,用户可以直接查看和备份。
 package store
