@@ -9,12 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	"bugu/internal/api"
 	"bugu/internal/clock"
+	"bugu/internal/notify"
 	"bugu/internal/store"
 	"bugu/internal/task"
 )
@@ -512,4 +514,49 @@ func TestC1C2C3AuthAndSingleInstance(t *testing.T) {
 		t.Fatal("重启后令牌变了")
 	}
 	again.Close()
+}
+
+// N1/N2/N5: 运行结束后,后台按任务的通知设置把系统通知交给界面。
+// M2 的完成标准:建一个定时脚本,到点后收到通知。
+func TestN1N2ScheduledRunNotifies(t *testing.T) {
+	f := clock.NewFake(epoch)
+	var mu sync.Mutex // 同一时刻触发的几个任务各自在自己的 goroutine 里结束
+	var got []notify.Message
+	d, err := Start(Options{Home: t.TempDir(), Listen: "127.0.0.1:0", Clock: f, Notify: func(m notify.Message) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, m)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	system := func(when string) []task.Notification {
+		return []task.Notification{{Channel: task.ChannelSystem, When: when}}
+	}
+	report := command("report", "0 2 * * *", "echo 3 new items")
+	report.Notifications = system("")
+	quiet := command("quiet", "0 2 * * *", "true")
+	quiet.Notifications = system("")
+	broken := command("broken", "0 2 * * *", "echo disk full >&2; exit 3")
+	broken.Notifications = system(task.NotifyOnFailure)
+	silent := command("silent", "0 2 * * *", "echo ignored; exit 1") // 没有设置通知
+	for _, tk := range []task.Task{report, quiet, broken, silent} {
+		create(t, d, tk)
+	}
+
+	advance(d, f, at(11, 2, 0)) // Wait 返回时全部运行已结束,通知都已交出
+	if len(got) != 2 {
+		t.Fatalf("通知 = %+v", got)
+	}
+	byTask := map[string]notify.Message{}
+	for _, m := range got {
+		byTask[m.Task] = m
+	}
+	if m := byTask["report"]; m.Title != "report 完成" || !strings.HasPrefix(m.Body, "3 new items\n") || m.RunID != runs(t, d, "report")[0].ID {
+		t.Errorf("report: %+v", m)
+	}
+	if m := byTask["broken"]; m.Title != "broken 失败(退出码 3)" || !strings.HasPrefix(m.Body, "disk full\n") {
+		t.Errorf("broken: %+v", m)
+	}
 }

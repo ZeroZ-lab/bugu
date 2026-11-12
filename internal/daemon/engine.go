@@ -12,6 +12,7 @@ import (
 	"bugu/internal/api"
 	"bugu/internal/clock"
 	"bugu/internal/exec"
+	"bugu/internal/notify"
 	"bugu/internal/schedule"
 	"bugu/internal/store"
 	"bugu/internal/task"
@@ -25,6 +26,8 @@ type engine struct {
 	exec  exec.Executor
 	ctx   context.Context // 后台关闭时取消,进行中的运行随之终止
 	logf  func(format string, args ...any)
+	// notify 把系统通知交给界面去显示;没有界面时为 nil(N1)。
+	notify func(notify.Message)
 
 	mu      sync.Mutex
 	since   map[string]time.Time // 每个任务已评估到的时间点
@@ -170,6 +173,10 @@ func (e *engine) execute(r task.Run, t task.Task) {
 	}
 	if err := e.store.FinishRun(r); err != nil {
 		e.logf("保存运行 %s 的结果失败: %v", r.ID, err)
+	}
+	// 按运行开始时的任务配置决定是否通知,与存档里的快照一致。
+	if m, ok := notify.System(t, r); ok && e.notify != nil {
+		e.notify(m)
 	}
 	e.mu.Lock()
 	delete(e.running, t.Name)
