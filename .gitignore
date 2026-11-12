@@ -3,3 +3,4 @@
 /.mygo/
 /repos/
 .DS_Store
+/web/node_modules/

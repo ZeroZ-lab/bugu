@@ -9,13 +9,14 @@
 - 某条需求的含义:docs/PRD.md 第 7 章,按编号查(S4、R6、T7…)。术语见第 4 章。
 - 包的职责和依赖方向:[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 - 某个设计为什么这样定:[docs/adr/](docs/adr/)。
-- 改界面、图标、文案:[docs/DESIGN.md](docs/DESIGN.md)。
+- 改界面、图标、文案:[docs/DESIGN.md](docs/DESIGN.md)。组件自己写,先用原生元素和 `web/src/ui/` 里现成的组件。
 
 ## 命令
 
-- `make check`:合并前的唯一关卡。格式、vet、全部测试、Linux 交叉编译。
-- `make test`:只跑测试。单个包用 `go test ./internal/schedule/...`。
+- `make check`:合并前的唯一关卡。格式、vet、全部测试、Linux 交叉编译、前端检查。需要 Node。
+- `make test`:只跑 Go 测试。单个包用 `go test ./internal/schedule/...`。
 - `make build`:生成 `bin/bugu`。
+- `make web`:改完 `web/` 下的前端源码后构建,产物 `internal/server/static/` 要一起提交。`make web-dev` 启动带热更新的开发服务器。
 
 ## 硬规则
 
