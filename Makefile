@@ -3,7 +3,7 @@ export CGO_ENABLED = 0
 
 VERSION ?= dev
 
-.PHONY: build build-headless app test fmt check fmt-check vet cross web web-dev web-check
+.PHONY: build build-headless app test fmt check fmt-check vet cross web web-dev web-check web-e2e
 
 build:
 	go build -ldflags "-X main.version=$(VERSION)" -o bin/bugu .
@@ -25,7 +25,7 @@ fmt:
 	gofmt -w .
 
 # 合并前的唯一关卡。
-check: fmt-check vet test cross web-check
+check: fmt-check vet test cross web-check web-e2e
 
 # ---- 网页前端(决策记录 0010)----
 # 源码在 web/,构建产物写进 internal/server/static 并提交进仓库,
@@ -50,6 +50,12 @@ web-check: web/node_modules
 	(cd web && npx vite build --logLevel warn --outDir "$$tmp" --emptyOutDir) && \
 	diff -r "$$tmp" internal/server/static >/dev/null || \
 	{ echo "internal/server/static 与 web/ 的源码不一致,请运行 make web 后一起提交。"; exit 1; }
+
+# 浏览器测试:用刚构建的程序起一个临时后台,在无界面的 Chromium 里走主要流程。
+# 页面是程序嵌入的那份产物。第一次运行会下载 Chromium;CI 上同时安装它需要的系统库。
+web-e2e: build web/node_modules
+	cd web && npx playwright install $(if $(CI),--with-deps) chromium
+	cd web && BUGU_BIN=../bin/bugu npm run e2e
 
 fmt-check:
 	@out="$$(gofmt -l .)"; if [ -n "$$out" ]; then echo "以下文件未格式化,请运行 make fmt:"; echo "$$out"; exit 1; fi

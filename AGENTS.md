@@ -13,10 +13,10 @@
 
 ## 命令
 
-- `make check`:合并前的唯一关卡。格式、vet、全部测试、Linux 交叉编译、前端检查。需要 Node。
+- `make check`:合并前的唯一关卡。格式、vet、全部测试、Linux 交叉编译、前端检查、浏览器测试。需要 Node;第一次运行会下载 Chromium。
 - `make test`:只跑 Go 测试。单个包用 `go test ./internal/schedule/...`。
 - `make build`:生成 `bin/bugu`。
-- `make web`:改完 `web/` 下的前端源码后构建,产物 `internal/server/static/` 要一起提交。`make web-dev` 启动带热更新的开发服务器。
+- `make web`:改完 `web/` 下的前端源码后构建,产物 `internal/server/static/` 要一起提交。`make web-dev` 启动带热更新的开发服务器。`make web-e2e` 只跑浏览器测试(`web/e2e/`)。
 
 ## 硬规则
 

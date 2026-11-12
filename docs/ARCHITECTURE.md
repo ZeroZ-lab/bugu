@@ -24,7 +24,7 @@ bugu add / list / run / …          bugu serve
 
 ## 界面
 
-前端源码在 `web/`,用 React 和 TypeScript 编写,Vite 构建。构建产物 `index.html`、`app.js`、`style.css` 写进 `internal/server/static/` 并提交进仓库,编译时嵌入程序,由后台在同一端口提供,所以构建程序不需要 Node([ADR 0010](adr/0010-web-react-vite.md))。`web/src/api.ts` 是接口客户端,`taskForm.ts` 是表单与任务定义之间的转换,`ui/` 是共用组件,其余是页面组件。前端只通过 JSON 接口工作,所以浏览器和应用窗口里是同一份。这三个静态文件不需要令牌;令牌由桌面外壳放在网址片段里交给页面,或由用户在页面上粘贴([ADR 0007](adr/0007-static-pages-without-token.md))。
+前端源码在 `web/`,用 React 和 TypeScript 编写,Vite 构建。构建产物 `index.html`、`app.js`、`style.css` 写进 `internal/server/static/` 并提交进仓库,编译时嵌入程序,由后台在同一端口提供,所以构建程序不需要 Node([ADR 0010](adr/0010-web-react-vite.md))。`web/src/api.ts` 是接口客户端,`taskForm.ts` 是表单与任务定义之间的转换,`ui/` 是共用组件,其余是页面组件。`web/e2e/` 是浏览器测试:用构建好的程序起一个临时数据目录、随机端口的后台,在 Chromium 里走主要流程。前端只通过 JSON 接口工作,所以浏览器和应用窗口里是同一份。这三个静态文件不需要令牌;令牌由桌面外壳放在网址片段里交给页面,或由用户在页面上粘贴([ADR 0007](adr/0007-static-pages-without-token.md))。
 
 桌面外壳 `gui` 是全项目唯一引用桌面框架 MyGo 的包,只做开窗口、菜单栏图标、系统通知、开机自启和退出前确认。用 `headless` 构建标签编译时不包含它和框架(`make build-headless`)。`make app` 把程序打成应用包,配置在 `mygo.json`。
 
