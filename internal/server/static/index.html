@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>布谷</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="bar">
+  <h1>布谷</h1>
+  <nav id="nav" hidden>
+    <button type="button" data-view="tasks" class="tab">任务</button>
+    <button type="button" data-view="runs" class="tab">运行记录</button>
+  </nav>
+  <span class="spacer"></span>
+  <span id="conn" class="muted"></span>
+</header>
+
+<main>
+  <section id="login" hidden>
+    <form id="login-form" class="card narrow">
+      <h2>连接后台</h2>
+      <p class="muted">粘贴这台主机的访问令牌。本机的令牌保存在数据目录的 <code>token</code> 文件里,默认是 <code>~/.bugu/token</code>。</p>
+      <label>令牌 <input id="login-token" type="password" autocomplete="off" required></label>
+      <p id="login-error" class="error" hidden></p>
+      <button type="submit" class="primary">连接</button>
+    </form>
+  </section>
+
+  <section id="tasks" hidden>
+    <div class="head">
+      <h2>任务</h2>
+      <button type="button" id="new-task" class="primary">新建任务</button>
+    </div>
+    <p id="tasks-empty" class="empty" hidden>还没有任务。点"新建任务",让一条命令或一个脚本按时运行。</p>
+    <div class="scroll"><table id="tasks-table" hidden>
+      <thead><tr><th>名称</th><th>触发</th><th>状态</th><th>下次运行</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section id="runs" hidden>
+    <div class="head">
+      <h2>运行记录</h2>
+      <label class="inline">任务 <select id="runs-filter"><option value="">全部</option></select></label>
+    </div>
+    <p id="runs-empty" class="empty" hidden>还没有运行记录。</p>
+    <div class="scroll"><table id="runs-table" hidden>
+      <thead><tr><th>开始时间</th><th>任务</th><th>状态</th><th>退出码</th><th>来源</th><th>说明</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <p id="page-error" class="error" hidden></p>
+</main>
+
+<dialog id="task-dialog">
+  <form id="task-form" method="dialog">
+    <h2 id="task-dialog-title">新建任务</h2>
+    <label>名称
+      <input name="name" required maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9_\-]*" placeholder="backup">
+      <small>字母、数字、- 和 _,创建后不能修改。</small>
+    </label>
+
+    <fieldset>
+      <legend>什么时候运行</legend>
+      <label class="inline"><input type="radio" name="trigger" value="cron" checked> 定时重复</label>
+      <label class="inline"><input type="radio" name="trigger" value="at"> 只运行一次</label>
+      <div data-show="cron">
+        <label>常用
+          <select name="preset">
+            <option value="0 2 * * *">每天 02:00</option>
+            <option value="0 9 * * 1-5">工作日 09:00</option>
+            <option value="0 * * * *">每小时整点</option>
+            <option value="*/15 * * * *">每 15 分钟</option>
+            <option value="">自定义</option>
+          </select>
+        </label>
+        <label>cron 表达式
+          <input name="cron" placeholder="0 2 * * *">
+          <small>五段:分 时 日 月 周,按这台主机的时区。</small>
+        </label>
+      </div>
+      <div data-show="at" hidden>
+        <label>时间 <input name="at" type="datetime-local"></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>运行什么</legend>
+      <label class="inline"><input type="radio" name="kind" value="command" checked> 一条命令</label>
+      <label class="inline"><input type="radio" name="kind" value="path"> 脚本文件</label>
+      <label data-show="command">命令
+        <input name="command" placeholder="~/bin/backup.sh --all">
+        <small>交给 /bin/sh 执行。</small>
+      </label>
+      <label data-show="path" hidden>脚本文件的路径
+        <input name="path" placeholder="~/bin/backup.sh">
+        <small>文件需要有执行权限。</small>
+      </label>
+      <label>工作目录(可选) <input name="cwd" placeholder="~/projects/site"></label>
+    </fieldset>
+
+    <fieldset>
+      <legend>其他</legend>
+      <label>最长运行时间,分钟(可选)
+        <input name="timeout" type="number" min="0" step="1" placeholder="不限">
+        <small>超过后终止并记为超时。</small>
+      </label>
+      <label>通知
+        <select name="notify">
+          <option value="on_content">失败时,或成功且有输出时</option>
+          <option value="on_failure">仅失败时</option>
+          <option value="always">每次运行后</option>
+          <option value="">不通知</option>
+        </select>
+        <small>系统通知由桌面应用发出。</small>
+      </label>
+      <label>环境变量(可选,每行一个 名=值)
+        <textarea name="env" rows="2" placeholder="TARGET=/data"></textarea>
+      </label>
+    </fieldset>
+
+    <p id="task-error" class="error" hidden></p>
+    <div class="actions">
+      <button type="button" id="task-cancel">取消</button>
+      <button type="submit" class="primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="run-dialog">
+  <div class="head">
+    <h2 id="run-title"></h2>
+    <button type="button" id="run-close">关闭</button>
+  </div>
+  <dl id="run-meta"></dl>
+  <h3>标准输出</h3>
+  <pre id="run-stdout"></pre>
+  <h3>标准错误</h3>
+  <pre id="run-stderr"></pre>
+</dialog>
+
+<script src="/app.js"></script>
+</body>
+</html>

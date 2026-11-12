@@ -196,3 +196,45 @@ func TestErrorsCarryCodeAndMessage(t *testing.T) {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// 决策记录 0007: 前端的静态文件不需要令牌,带着限制页面行为的响应头;
+// 除了列出的这几个文件,其他任何路径仍然要令牌,也不能用静态文件的路径绕到接口上。
+func TestStaticPagesAreServedWithoutTokenAndNothingElseIs(t *testing.T) {
+	get := func(method, path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		serve(&fake{}).ServeHTTP(rec, httptest.NewRequest(method, path, nil))
+		return rec
+	}
+	for path, contentType := range map[string]string{"/": "text/html", "/app.js": "javascript", "/style.css": "text/css"} {
+		rec := get("GET", path)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Header().Get("Content-Type"), contentType) || rec.Body.Len() == 0 {
+			t.Errorf("GET %s: 状态 %d 类型 %q", path, rec.Code, rec.Header().Get("Content-Type"))
+		}
+		csp := rec.Header().Get("Content-Security-Policy")
+		if !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "script-src 'self'") ||
+			!strings.Contains(csp, "frame-ancestors 'none'") || rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("GET %s: 响应头不完整: %v", path, rec.Header())
+		}
+	}
+	for _, req := range [][2]string{
+		{"GET", "/index.html"}, {"GET", "/static/app.js"}, {"GET", "/app.js/../api/v1/tasks"}, {"GET", "/favicon.ico"},
+		{"POST", "/"}, {"DELETE", "/app.js"}, {"GET", "/api/v1/tasks"}, {"GET", "/api/v1/../v1/tasks"},
+	} {
+		if rec := get(req[0], req[1]); rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s: 状态 %d,应要求令牌", req[0], req[1], rec.Code)
+		}
+	}
+}
+
+// 页面里不能有内联脚本和内联样式,否则会被内容安全策略拦下而悄悄失效。
+func TestPagesHaveNoInlineScriptOrStyle(t *testing.T) {
+	html, err := static.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"<script>", "<style", " style=", " onclick=", "javascript:"} {
+		if strings.Contains(string(html), bad) {
+			t.Errorf("index.html 含有 %q", bad)
+		}
+	}
+}

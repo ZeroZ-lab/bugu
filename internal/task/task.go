@@ -26,10 +26,21 @@ type Trigger struct {
 	At   time.Time `json:"at,omitzero"`
 }
 
-// Notification 仅标识通知渠道,投递配置由 notify 实现时扩展。
+// Notification 是任务的一条通知设置:发到哪个渠道,什么情况下发。
 type Notification struct {
 	Channel string `json:"channel"`
+	When    string `json:"when,omitempty"` // 为空时等同于 NotifyOnContent。
 }
+
+// ChannelSystem 是系统通知,由桌面应用发出(N1)。
+const ChannelSystem = "system"
+
+// 通知时机(N2)。
+const (
+	NotifyAlways    = "always"     // 每次运行后
+	NotifyOnFailure = "on_failure" // 仅失败、超时时
+	NotifyOnContent = "on_content" // 失败、超时时,或成功且有输出时。默认值。
+)
 
 type StepType string
 
@@ -76,7 +87,7 @@ var namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 // ValidName 报告 name 能否作为任务名。
 func ValidName(name string) bool { return namePattern.MatchString(name) }
 
-// Validate 检查任务定义中与执行方式无关的部分:名字和触发。
+// Validate 检查任务定义中与执行方式无关的部分:名字、触发和通知设置。
 // 触发表达式本身是否合法由 schedule 判断,步骤能否执行由 exec 判断。
 func Validate(t Task) error {
 	if !ValidName(t.Name) {
@@ -84,6 +95,16 @@ func Validate(t Task) error {
 	}
 	if (t.Trigger.Cron == "") == t.Trigger.At.IsZero() {
 		return errors.New("触发方式必须在 cron 表达式和一次性时间点之间二选一")
+	}
+	for _, n := range t.Notifications {
+		if n.Channel != ChannelSystem {
+			return fmt.Errorf("不支持的通知渠道 %q,目前只支持 %s", n.Channel, ChannelSystem)
+		}
+		switch n.When {
+		case "", NotifyAlways, NotifyOnFailure, NotifyOnContent:
+		default:
+			return fmt.Errorf("通知时机 %q 不合法,可用的是 %s、%s、%s", n.When, NotifyAlways, NotifyOnFailure, NotifyOnContent)
+		}
 	}
 	return nil
 }

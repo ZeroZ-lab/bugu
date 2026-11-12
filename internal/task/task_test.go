@@ -68,3 +68,25 @@ func TestT1S1S2Validate(t *testing.T) {
 		}
 	}
 }
+
+// N2: 通知设置只接受已支持的渠道和时机。
+func TestN2ValidateNotifications(t *testing.T) {
+	base := Task{Name: "backup", Trigger: Trigger{Cron: "0 2 * * *"}}
+	for _, tt := range []struct {
+		n  Notification
+		ok bool
+	}{
+		{Notification{Channel: ChannelSystem}, true},
+		{Notification{Channel: ChannelSystem, When: NotifyOnFailure}, true},
+		{Notification{Channel: ChannelSystem, When: NotifyAlways}, true},
+		{Notification{Channel: ChannelSystem, When: "sometimes"}, false},
+		{Notification{Channel: "pager"}, false},
+		{Notification{}, false},
+	} {
+		tk := base
+		tk.Notifications = []Notification{tt.n}
+		if err := Validate(tk); (err == nil) != tt.ok {
+			t.Errorf("%+v: err=%v,期望通过=%v", tt.n, err, tt.ok)
+		}
+	}
+}
