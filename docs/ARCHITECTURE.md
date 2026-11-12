@@ -4,7 +4,7 @@
 
 ## 运行时
 
-程序入口为 `main → cli`。`bugu serve` 在当前进程里启动后台(`daemon`),其余命令是客户端:通过 `client` 调用后台的 HTTP 接口,自己不读写任务文件。
+程序入口为 `main → cli`。`bugu serve` 在当前进程里启动后台(`daemon`);`bugu app`(或不带参数)启动桌面应用(`gui`),它同样在进程里承载后台,除非本机已有后台在运行,那时它只做界面。其余命令是客户端:通过 `client` 调用后台的 HTTP 接口,自己不读写任务文件。
 
 ```
 bugu add / list / run / …          bugu serve
@@ -19,7 +19,15 @@ bugu add / list / run / …          bugu serve
 
 本机客户端靠数据目录(默认 `~/.bugu`,可用 `BUGU_HOME` 指定)里的两个文件找到后台:`endpoint.json` 是后台实际监听的地址,`token` 是令牌。数据目录由一个文件锁独占,同一份数据只会有一个后台。目录布局见 `internal/store/store.go` 的注释,接口列表见 `internal/server/server.go`。
 
-每个请求先校验来源再校验令牌,之后才到达处理器:带 `Origin` 的请求必须与请求目标同源,令牌只从 `Authorization: Bearer` 请求头读取([ADR 0001](adr/0001-http-and-token.md),PRD 7.10)。
+每个接口请求先校验来源再校验令牌,之后才到达处理器:带 `Origin` 的请求必须与请求目标同源,令牌只从 `Authorization: Bearer` 请求头读取([ADR 0001](adr/0001-http-and-token.md),PRD 7.10)。
+
+## 界面
+
+前端是 `internal/server/static/` 下手写的 HTML、CSS 和原生 JS,没有构建步骤,编译时嵌入程序,由后台在同一端口提供。它只通过 JSON 接口工作,所以浏览器和应用窗口里是同一份。这三个静态文件不需要令牌;令牌由桌面外壳放在网址片段里交给页面,或由用户在页面上粘贴([ADR 0007](adr/0007-static-pages-without-token.md))。
+
+桌面外壳 `gui` 是全项目唯一引用桌面框架 MyGo 的包,只做开窗口、菜单栏图标、系统通知、开机自启和退出前确认。用 `headless` 构建标签编译时不包含它和框架(`make build-headless`)。`make app` 把程序打成应用包,配置在 `mygo.json`。
+
+运行结束后,`notify` 按任务的通知设置决定要不要通知、内容是什么;后台通过 `daemon.Options.Notify` 把结果交给承载它的外壳去显示。`bugu serve` 没有外壳,不发系统通知。
 
 尚未实现的部分见 [PRD](PRD.md) 第 11 章。
 
@@ -35,12 +43,13 @@ bugu add / list / run / …          bugu serve
 | `runner` | 读取运行器配置,把步骤渲染成要执行的命令 | `task` |
 | `exec` | 启动进程、超时、终止进程树、采集输出 | `clock` `task` `runner` |
 | `store` | 任务文件、运行存档、调度进度、令牌文件的持久化,数据目录的独占锁 | `clock` `task` |
-| `notify` | 通知投递与投递记录 | `clock` `task` |
+| `notify` | 决定一次运行要不要通知、通知写什么。纯函数,不负责显示 | `clock` `task` |
 | `api` | HTTP 接口的请求与响应类型,以及客户端和后台共同约定的文件名。只有类型和常量,没有逻辑 | `task` |
 | `server` | HTTP 处理器、来源校验、令牌认证。通过自己定义的 `Backend` 接口调用后台 | `api` 与上面全部 |
 | `daemon` | 引擎(触发、运行管理,实现 `server.Backend`),并把以上各部分组装成一个运行中的后台 | `server` 与上面全部 |
 | `client` | 接口的 Go 封装 | `api` `task` |
-| `cli` | 子命令。通过 `client` 工作;仅在启动后台时引用 `daemon` | `client` `api` `task` `daemon` |
+| `gui` | 桌面外壳:窗口、菜单栏、系统通知、开机自启。唯一引用桌面框架的包 | `client` `api` `task` `daemon` `notify` |
+| `cli` | 子命令。通过 `client` 工作;仅在启动后台时引用 `daemon`,仅在打开桌面应用时引用 `gui` | `client` `api` `task` `daemon` `gui` |
 | `fakeagent` | 测试用的假 agent,一个独立的小程序 | 无 |
 | `archtest` | 架构检查,只有测试 | 无 |
 
@@ -58,4 +67,4 @@ macOS 和 Linux 上每次执行使用独立进程组。超时、取消及父进�
 
 ## 尚未建立的部分
 
-内嵌前端与桌面外壳(M2)、预设运行器配置 `runners/`(M3)、给用户 agent 的技能说明(M5)。
+预设运行器配置 `runners/`(M3)、通知的投递记录与 webhook(M4)、给用户 agent 的技能说明(M5)。
