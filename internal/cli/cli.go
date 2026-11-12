@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -19,15 +20,18 @@ import (
 
 	"bugu/internal/client"
 	"bugu/internal/daemon"
+	"bugu/internal/gui"
 	"bugu/internal/task"
 )
 
 const usage = `bugu:桌面优先的定时任务应用
 
 用法:
-  bugu serve [--listen 地址]         启动后台(默认只监听本机)
+  bugu app                           打开桌面应用(菜单栏图标加主窗口),同时承载后台
+  bugu serve [--listen 地址]         只启动后台,没有界面(默认只监听本机)
   bugu add <任务> --schedule <cron> (--command <命令> | --path <脚本>)
            [--at <时间>] [--cwd <目录>] [--env 名=值]... [--timeout <时长>]
+           [--notify on_content|on_failure|always|none]
   bugu add --file <文件>             从 JSON 文件新建任务,- 表示标准输入
   bugu list                          列出任务及下次运行时间
   bugu show <任务>                   查看任务定义(JSON,可用于 add --file)
@@ -59,8 +63,12 @@ type env struct {
 // Main 执行一次命令行调用,返回进程退出码。
 func Main(version string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprint(stdout, usage)
-		return 0
+		// 不带参数就是打开桌面应用(PRD 5.1),双击应用包走的就是这里。无界面构建里显示用法。
+		if !gui.Available {
+			fmt.Fprint(stdout, usage)
+			return 0
+		}
+		args = []string{"app"}
 	}
 	switch args[0] {
 	case "version", "--version", "-v":
@@ -71,7 +79,7 @@ func Main(version string, args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	commands := map[string]func(*env, []string) error{
-		"serve": serveCmd, "add": addCmd, "list": listCmd, "show": showCmd, "edit": editCmd, "rm": rmCmd,
+		"app": appCmd, "serve": serveCmd, "add": addCmd, "list": listCmd, "show": showCmd, "edit": editCmd, "rm": rmCmd,
 		"run": runCmd, "pause": pauseCmd, "resume": resumeCmd, "runs": runsCmd, "logs": logsCmd,
 	}
 	cmd, ok := commands[args[0]]
@@ -137,6 +145,15 @@ func one(name, what string, args []string) (string, error) {
 	return rest[0], nil
 }
 
+func appCmd(e *env, args []string) error {
+	if rest, err := parse(flag.NewFlagSet("app", flag.ContinueOnError), args); err != nil {
+		return err
+	} else if len(rest) != 0 {
+		return usagef("不接受参数 %q", rest[0])
+	}
+	return gui.Run(e.home, e.stderr)
+}
+
 func serveCmd(e *env, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	listen := fs.String("listen", daemon.DefaultListen, "")
@@ -179,7 +196,7 @@ func (f envFlag) Set(s string) error {
 type taskFlags struct {
 	fs                                     *flag.FlagSet
 	schedule, at, command, path, cwd, file string
-	timeout                                string
+	timeout, notify                        string
 	env                                    envFlag
 }
 
@@ -192,6 +209,7 @@ func newTaskFlags(name string) *taskFlags {
 	f.fs.StringVar(&f.cwd, "cwd", "", "")
 	f.fs.StringVar(&f.timeout, "timeout", "", "")
 	f.fs.StringVar(&f.file, "file", "", "")
+	f.fs.StringVar(&f.notify, "notify", "", "")
 	f.fs.Var(f.env, "env", "")
 	return f
 }
@@ -234,6 +252,18 @@ func (f *taskFlags) apply(t *task.Task) error {
 			return usagef(`--timeout %q 无法解析,应写成 "30m"、"1h30m" 这样的形式,0 表示不设上限`, f.timeout)
 		}
 		t.Timeout = task.Duration(d)
+	}
+	if given["notify"] {
+		// 只替换系统通知这一条,其他渠道的设置保持不变。
+		kept := slices.DeleteFunc(slices.Clone(t.Notifications), func(n task.Notification) bool { return n.Channel == task.ChannelSystem })
+		switch f.notify {
+		case "none":
+		case task.NotifyOnContent, task.NotifyOnFailure, task.NotifyAlways:
+			kept = append(kept, task.Notification{Channel: task.ChannelSystem, When: f.notify})
+		default:
+			return usagef("--notify %q 不合法,可用的是 on_content(失败或有输出时)、on_failure、always、none", f.notify)
+		}
+		t.Notifications = kept
 	}
 	for k, v := range f.env {
 		if t.Env == nil {

@@ -1,6 +1,7 @@
 package archtest
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
@@ -32,7 +33,8 @@ var allowed = map[string][]string{
 	"server":    {"api", "clock", "task", "schedule", "runner", "exec", "store", "notify"},
 	"daemon":    {"server", "api", "clock", "task", "schedule", "runner", "exec", "store", "notify"},
 	"client":    {"api", "task"},
-	"cli":       {"client", "api", "task", "daemon"},
+	"gui":       {"client", "api", "task", "daemon", "notify"},
+	"cli":       {"client", "api", "task", "daemon", "gui"},
 	"fakeagent": {},
 	"archtest":  {},
 }
@@ -131,6 +133,31 @@ func TestNoCgo(t *testing.T) {
 			if imp.Path.Value == `"C"` {
 				t.Errorf("%s: 使用了 cgo", file)
 			}
+		}
+	}
+}
+
+// 桌面框架只允许出现在 gui 包里,而且必须能用 headless 构建标签整个排除(PRD 5.6)。
+// 这样服务器上的构建不带它,将来更换框架也只动这一个包。
+func TestDesktopFrameworkStaysInGUI(t *testing.T) {
+	const framework = "github.com/egoist/mygo"
+	for _, file := range goFiles(t) {
+		f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, filepath.FromSlash(file)), nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		uses := slices.ContainsFunc(f.Imports, func(imp *ast.ImportSpec) bool {
+			path, _ := strconv.Unquote(imp.Path.Value)
+			return path == framework || strings.HasPrefix(path, framework+"/")
+		})
+		if !uses {
+			continue
+		}
+		if internalPkg(file) != "gui" {
+			t.Errorf("%s: 只有 internal/gui 可以引用桌面框架", file)
+		}
+		if !strings.Contains(read(t, file), "//go:build !headless") {
+			t.Errorf("%s: 引用桌面框架的文件必须带 //go:build !headless", file)
 		}
 	}
 }
