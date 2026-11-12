@@ -234,3 +234,21 @@ func TestServeRunsUntilStopped(t *testing.T) {
 	}
 	fails(t, 1, "后台没有在运行", "list")
 }
+
+// N2: 命令行可以设置、修改和取消系统通知。
+func TestN2NotifyFlag(t *testing.T) {
+	backend(t)
+	ok(t, "add", "backup", "--schedule", "0 2 * * *", "--command", "true", "--notify", "on_failure")
+	if show := ok(t, "show", "backup"); !strings.Contains(show, `"channel": "system"`) || !strings.Contains(show, `"when": "on_failure"`) {
+		t.Fatalf("show=\n%s", show)
+	}
+	ok(t, "edit", "backup", "--notify", "always")
+	if show := ok(t, "show", "backup"); !strings.Contains(show, `"when": "always"`) || strings.Count(show, `"channel"`) != 1 {
+		t.Fatalf("show=\n%s", show)
+	}
+	ok(t, "edit", "backup", "--notify", "none")
+	if show := ok(t, "show", "backup"); strings.Contains(show, "notifications") {
+		t.Fatalf("show=\n%s", show)
+	}
+	fails(t, 2, "--notify", "edit", "backup", "--notify", "sometimes")
+}

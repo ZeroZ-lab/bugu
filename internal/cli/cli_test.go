@@ -14,7 +14,7 @@ func TestHelpVersionAndUnknown(t *testing.T) {
 		wantStdout string
 		wantStderr string
 	}{
-		{"无参数显示用法", nil, 0, "用法", ""},
+		{"帮助", []string{"help"}, 0, "用法", ""},
 		{"版本", []string{"version"}, 0, "bugu 1.2.3", ""},
 		{"未知命令", []string{"nope"}, 2, "", `未知命令 "nope"`},
 	}

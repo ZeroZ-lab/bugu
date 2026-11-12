@@ -2,6 +2,7 @@
 package server
 
 import (
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,10 +30,35 @@ type Backend interface {
 	Logs(id string) (api.Logs, error)
 }
 
+// 前端的静态文件。它们不含用户数据,不需要令牌(决策记录 0007)。
+//
+//go:embed static
+var static embed.FS
+
+// pages 是对外提供的静态文件,键是请求路径。只提供列出的这几个,其余路径一律走接口的校验。
+var pages = map[string]string{
+	"/":          "static/index.html",
+	"/app.js":    "static/app.js",
+	"/style.css": "static/style.css",
+}
+
+// 页面只能加载同源的脚本和样式,不能被其他页面嵌入,也不向外泄露来源。
+const contentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; " +
+	"img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+
+func servePage(w http.ResponseWriter, r *http.Request, name string) {
+	w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Cache-Control", "no-cache")
+	http.ServeFileFS(w, r, static, name)
+}
+
 // maxBody 是请求体的大小上限。任务定义很小,超过即视为误用。
 const maxBody = 1 << 20
 
-// New 返回提供全部接口的处理器。valid 判断令牌是否有效;每个请求都必须通过它(C1)。
+// New 返回提供全部接口和前端页面的处理器。valid 判断令牌是否有效;
+// 除了几个固定的静态文件,每个请求都必须通过它(C1,决策记录 0007)。
 func New(b Backend, valid func(token string) bool) http.Handler {
 	mux := http.NewServeMux()
 	handle := func(pattern string, fn func(r *http.Request) (any, error)) {
@@ -96,7 +122,14 @@ func New(b Backend, valid func(token string) bool) http.Handler {
 	handle("GET /runs/{id}", func(r *http.Request) (any, error) { return b.Run(r.PathValue("id")) })
 	handle("GET /runs/{id}/logs", func(r *http.Request) (any, error) { return b.Logs(r.PathValue("id")) })
 
-	return guard(mux, valid)
+	guarded := guard(mux, valid)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if name, ok := pages[r.URL.Path]; ok && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+			servePage(w, r, name)
+			return
+		}
+		guarded.ServeHTTP(w, r)
+	})
 }
 
 // guard 在任何处理器之前校验来源和令牌,没有任何路径可以绕过。

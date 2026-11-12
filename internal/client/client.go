@@ -45,21 +45,29 @@ var ErrNotRunning = errors.New("后台没有在运行,请先执行 bugu serve")
 
 // Local 返回连接本机后台的客户端:地址和令牌读自数据目录(PRD 5.4)。
 func Local(home string) (*Client, error) {
+	c, _, _, err := LocalEndpoint(home)
+	return c, err
+}
+
+// LocalEndpoint 与 Local 相同,并一并返回本机后台的地址和令牌。
+// 桌面外壳用它们拼出要在窗口里打开的网址。
+func LocalEndpoint(home string) (c *Client, addr, token string, err error) {
 	raw, err := os.ReadFile(filepath.Join(home, api.EndpointFile))
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, ErrNotRunning
+		return nil, "", "", ErrNotRunning
 	} else if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 	var endpoint api.Endpoint
 	if err := json.Unmarshal(raw, &endpoint); err != nil || endpoint.Addr == "" {
-		return nil, fmt.Errorf("无法解析 %s", filepath.Join(home, api.EndpointFile))
+		return nil, "", "", fmt.Errorf("无法解析 %s", filepath.Join(home, api.EndpointFile))
 	}
-	token, err := os.ReadFile(filepath.Join(home, api.TokenFile))
+	secret, err := os.ReadFile(filepath.Join(home, api.TokenFile))
 	if err != nil {
-		return nil, fmt.Errorf("读取本机令牌: %w", err)
+		return nil, "", "", fmt.Errorf("读取本机令牌: %w", err)
 	}
-	return New(endpoint.Addr, strings.TrimSpace(string(token))), nil
+	token = strings.TrimSpace(string(secret))
+	return New(endpoint.Addr, token), endpoint.Addr, token, nil
 }
 
 // do 发出一次请求。后台返回的错误以 *api.Error 的形式交给调用者。

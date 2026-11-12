@@ -15,6 +15,7 @@ import (
 
 	"bugu/internal/api"
 	"bugu/internal/clock"
+	"bugu/internal/notify"
 	"bugu/internal/server"
 	"bugu/internal/store"
 )
@@ -31,6 +32,9 @@ type Options struct {
 	Clock  clock.Clock   // 为空时使用系统时钟
 	Tick   time.Duration // 评估间隔,为 0 时使用默认值
 	Log    io.Writer     // 运行日志,为空时丢弃
+	// Notify 接收需要显示给用户的系统通知,由承载后台的界面提供;为空时不发系统通知(N1)。
+	// 它在运行结束时被调用,不应长时间阻塞。
+	Notify func(notify.Message)
 
 	afterTick func() // 测试用:循环里的每次评估结束后调用
 }
@@ -94,6 +98,7 @@ func Start(o Options) (*Daemon, error) {
 		cancel()
 		return nil, err
 	}
+	d.engine.notify = o.Notify
 
 	if d.ln, err = net.Listen("tcp", o.Listen); err != nil {
 		cancel()

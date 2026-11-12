@@ -1,3 +1,5 @@
 /bin/
+/dist/
+/.mygo/
 /repos/
 .DS_Store
