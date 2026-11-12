@@ -97,20 +97,21 @@ function toLocalInput(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// 运行状态的文字和标记。标记的画法见 docs/DESIGN.md:空心是还没发生或正在发生,实心是已有结果。
 const STATUS = {
-  queued: ["排队中", ""],
-  running: ["运行中", "warn"],
-  succeeded: ["成功", "ok"],
-  failed: ["失败", "bad"],
-  timed_out: ["超时", "bad"],
-  skipped: ["已跳过", ""],
-  missed: ["已错过", ""],
-  canceled: ["已取消", ""],
-  interrupted: ["中断", "bad"],
+  queued: ["排队中", "ring"],
+  running: ["运行中", "spin ink"],
+  succeeded: ["成功", "solid ok"],
+  failed: ["失败", "solid bad"],
+  timed_out: ["超时", "solid warn"],
+  skipped: ["已跳过", "solid quiet"],
+  missed: ["已错过", "solid quiet"],
+  canceled: ["已取消", "solid quiet"],
+  interrupted: ["中断", "solid bad"],
 };
 
-function badge(text, kind) {
-  return h("span", { class: "badge " + (kind || "") }, text);
+function mark(text, kind) {
+  return h("span", { class: "mark " + kind }, text);
 }
 
 function describeTrigger(tr) {
@@ -168,13 +169,13 @@ async function loadTasks() {
 }
 
 function taskRow(t) {
-  const status = t.running ? badge("运行中", "warn") : t.paused ? badge("已暂停", "") : badge("已启用", "ok");
+  const status = t.running ? mark("运行中", "spin ink") : t.paused ? mark("已暂停", "ring quiet") : mark("等待", "ring");
   const act = (label, fn, cls) => h("button", { type: "button", class: cls || "", onclick: () => run(fn) }, label);
   return h("tr", {},
-    h("td", {}, t.name),
-    h("td", {}, h("code", {}, describeTrigger(t.trigger))),
+    h("td", { class: "mono" }, t.name),
+    h("td", { class: "time" }, describeTrigger(t.trigger)),
     h("td", {}, status),
-    h("td", {}, formatTime(t.next_run)),
+    h("td", { class: "time" }, formatTime(t.next_run)),
     h("td", { class: "ops" },
       act("立即运行", async () => {
         const r = await api("POST", `/tasks/${encodeURIComponent(t.name)}/run`);
@@ -367,12 +368,12 @@ async function loadRuns() {
 }
 
 function runRow(r) {
-  const [label, kind] = STATUS[r.status] || [r.status, ""];
+  const [label, kind] = STATUS[r.status] || [r.status, "ring"];
   const open = () => openRun(r.id);
   return h("tr", { tabindex: "0", onclick: open, onkeydown: (e) => e.key === "Enter" && open() },
-    h("td", {}, formatTime(r.started_at || r.created_at)),
-    h("td", {}, r.task),
-    h("td", {}, badge(label, kind)),
+    h("td", { class: "time" }, formatTime(r.started_at || r.created_at)),
+    h("td", { class: "mono" }, r.task),
+    h("td", {}, mark(label, kind)),
     h("td", {}, r.exit_code === undefined ? "-" : String(r.exit_code)),
     h("td", {}, r.trigger === "manual" ? "手动" : "定时"),
     h("td", { class: "wrap" }, r.note || (r.status === "failed" ? "" : r.error || "")));

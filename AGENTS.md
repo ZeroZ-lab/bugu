@@ -9,6 +9,7 @@
 - 某条需求的含义:docs/PRD.md 第 7 章,按编号查(S4、R6、T7…)。术语见第 4 章。
 - 包的职责和依赖方向:[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 - 某个设计为什么这样定:[docs/adr/](docs/adr/)。
+- 改界面、图标、文案:[docs/DESIGN.md](docs/DESIGN.md)。
 
 ## 命令
 

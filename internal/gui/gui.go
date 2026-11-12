@@ -10,6 +10,7 @@ import (
 	"image/color"
 	"image/png"
 	"io"
+	"math"
 	"net/url"
 	"os"
 	"os/signal"
@@ -208,16 +209,28 @@ func (a *app) notify(m notify.Message) {
 	}
 }
 
-// trayIcon 画一个菜单栏用的模板图标:透明背景上的黑色圆环加中心圆点。
+// trayIcon 画菜单栏用的模板图标:透明背景上的黑色 logo,左上实心圆、右下空心圆。
+// 几何取自 resources/logo.svg,平移后正好占满 36×36(菜单栏 18pt 的两倍像素)。
 func trayIcon() []byte {
-	const size = 36
+	const size, sub = 36, 4 // 每个像素取 4×4 个采样点,边缘抗锯齿
+	const ox, oy = 5.5, 7.5 // logo 画布到图标的平移
+	inside := func(x, y float64) bool {
+		d1 := math.Hypot(x-(17-ox), y-(19-oy))
+		d2 := math.Hypot(x-(33-ox), y-(31-oy))
+		return d1 <= 9 || (d2 >= 5.5-1.75 && d2 <= 5.5+1.75)
+	}
 	img := image.NewNRGBA(image.Rect(0, 0, size, size))
 	for y := range size {
 		for x := range size {
-			dx, dy := float64(x)-size/2+0.5, float64(y)-size/2+0.5
-			if d := dx*dx + dy*dy; d <= 5*5 || (d >= 11*11 && d <= 14.5*14.5) {
-				img.Set(x, y, color.NRGBA{A: 255})
+			n := 0
+			for sy := range sub {
+				for sx := range sub {
+					if inside(float64(x)+(float64(sx)+0.5)/sub, float64(y)+(float64(sy)+0.5)/sub) {
+						n++
+					}
+				}
 			}
+			img.Set(x, y, color.NRGBA{A: uint8(n * 255 / (sub * sub))})
 		}
 	}
 	var b bytes.Buffer
