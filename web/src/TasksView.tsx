@@ -63,20 +63,22 @@ export function TasksView({ tick, onLoaded, onError, act, onNew, onEdit, onRunSt
                     {t.running ? <Mark kind="spin ink">运行中</Mark> : t.paused ? <Mark kind="ring quiet">已暂停</Mark> : <Mark kind="ring">等待</Mark>}
                   </td>
                   <td className="time">{formatTime(t.next_run)}</td>
-                  <td className="ops">
-                    <Button onClick={() => act(async () => onRunStarted((await api<{ id: string }>("POST", taskPath(t.name, "run"))).id))}>
-                      立即运行
-                    </Button>
-                    <Button onClick={() => act(() => api("POST", taskPath(t.name, t.paused ? "resume" : "pause")))}>{t.paused ? "恢复" : "暂停"}</Button>
-                    <Button onClick={() => onEdit(t)}>编辑</Button>
-                    <Button
-                      variant="danger"
-                      onClick={() => {
-                        if (confirm(`删除任务 ${t.name}?运行记录会保留。`)) act(() => api("DELETE", taskPath(t.name)));
-                      }}
-                    >
-                      删除
-                    </Button>
+                  <td>
+                    <div className="ops">
+                      <Button onClick={() => act(async () => onRunStarted((await api<{ id: string }>("POST", taskPath(t.name, "run"))).id))}>
+                        立即运行
+                      </Button>
+                      <Button onClick={() => act(() => api("POST", taskPath(t.name, t.paused ? "resume" : "pause")))}>{t.paused ? "恢复" : "暂停"}</Button>
+                      <Button onClick={() => onEdit(t)}>编辑</Button>
+                      <Button
+                        variant="danger"
+                        onClick={() => {
+                          if (confirm(`删除任务 ${t.name}?运行记录会保留。`)) act(() => api("DELETE", taskPath(t.name)));
+                        }}
+                      >
+                        删除
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -46,8 +46,8 @@ tbody tr:last-child td { border-bottom: 0; }
 td.mono { font-size: 13px; }
 td.time { font-family: var(--mono); font-size: 13px; color: var(--muted); }
 td.wrap { white-space: normal; min-width: 180px; }
-td.ops { text-align: right; }
-td.ops button { margin-left: 6px; }
+/* 行内操作:宽度不够时折行,不把表格撑宽;最窄时每行放两个按钮。 */
+.ops { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; min-width: 144px; }
 table.clickable tbody tr { cursor: pointer; }
 table.clickable tbody tr:hover, table.clickable tbody tr:focus { background: var(--hover); outline: none; }
 
@@ -95,6 +95,9 @@ pre { margin: 0; padding: 10px 12px; background: var(--bg); border: 1px solid va
 pre:empty::before { content: "(空)"; color: var(--muted); }
 
 .bar .brand, .tab, .bar nav { white-space: nowrap; }
+@media (max-width: 760px) {
+  th, td { padding-left: 8px; padding-right: 8px; }
+}
 @media (max-width: 520px) {
   .conn { display: none; }
   .bar { padding: 10px 14px; gap: 10px; }
