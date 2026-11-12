@@ -34,7 +34,7 @@
       <h2>任务</h2>
       <button type="button" id="new-task" class="primary">新建任务</button>
     </div>
-    <p id="tasks-empty" class="empty" hidden>还没有任务。点"新建任务",让一条命令或一个脚本按时运行。</p>
+    <p id="tasks-empty" class="empty" hidden>还没有任务。点"新建任务",让一条命令、一个脚本或一个 AI 命令行按时运行。</p>
     <div class="scroll"><table id="tasks-table" hidden>
       <thead><tr><th>名称</th><th>触发</th><th>状态</th><th>下次运行</th><th></th></tr></thead>
       <tbody></tbody>
@@ -92,6 +92,7 @@
       <legend>运行什么</legend>
       <label class="inline"><input type="radio" name="kind" value="command" checked> 一条命令</label>
       <label class="inline"><input type="radio" name="kind" value="path"> 脚本文件</label>
+      <label class="inline"><input type="radio" name="kind" value="agent"> AI 命令行</label>
       <label data-show="command">命令
         <input name="command" placeholder="~/bin/backup.sh --all">
         <small>交给 /bin/sh 执行。</small>
@@ -100,6 +101,20 @@
         <input name="path" placeholder="~/bin/backup.sh">
         <small>文件需要有执行权限。</small>
       </label>
+      <div data-show="agent" hidden>
+        <label>运行器
+          <select name="runner"></select>
+          <small id="runner-hint">这台主机上已配置的 AI 命令行。</small>
+        </label>
+        <label>提示词
+          <textarea name="prompt" rows="6" placeholder="列出 {last_run} 之后的新 issue,按 bug、需求、提问分类。只读,不要回复任何 issue。"></textarea>
+          <small>可以使用 {date}、{time}、{datetime}、{last_run}(上次成功运行的时间)、{task_name}、{run_dir}。</small>
+        </label>
+        <label id="permission-field">允许它做什么
+          <select name="permission"></select>
+          <small>运行时没有人在场,除非任务确实需要修改文件,否则保持只读。</small>
+        </label>
+      </div>
       <label>工作目录(可选) <input name="cwd" placeholder="~/projects/site"></label>
     </fieldset>
 

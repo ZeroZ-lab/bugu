@@ -35,6 +35,8 @@ type Options struct {
 	// Notify 接收需要显示给用户的系统通知,由承载后台的界面提供;为空时不发系统通知(N1)。
 	// 它在运行结束时被调用,不应长时间阻塞。
 	Notify func(notify.Message)
+	// LoginShell 是用户登录 shell 的路径,任务的子进程经它启动(E1);为空时直接启动。
+	LoginShell string
 
 	afterTick func() // 测试用:循环里的每次评估结束后调用
 }
@@ -94,7 +96,7 @@ func Start(o Options) (*Daemon, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	d.cancel = cancel
-	if d.engine, err = newEngine(ctx, o.Clock, st, logf); err != nil {
+	if d.engine, err = newEngine(ctx, o.Clock, st, o.LoginShell, logf); err != nil {
 		cancel()
 		return nil, err
 	}

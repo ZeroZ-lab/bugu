@@ -28,6 +28,9 @@ type Backend interface {
 	Runs(taskName string, limit int) ([]task.Run, error)
 	Run(id string) (task.Run, error)
 	Logs(id string) (api.Logs, error)
+	Runners() ([]api.Runner, error)
+	// CheckRunner 实际启动一次运行器的检查命令,可能需要几秒。
+	CheckRunner(name string) (api.RunnerCheck, error)
 }
 
 // 前端的静态文件。它们不含用户数据,不需要令牌(决策记录 0007)。
@@ -121,6 +124,15 @@ func New(b Backend, valid func(token string) bool) http.Handler {
 	})
 	handle("GET /runs/{id}", func(r *http.Request) (any, error) { return b.Run(r.PathValue("id")) })
 	handle("GET /runs/{id}/logs", func(r *http.Request) (any, error) { return b.Logs(r.PathValue("id")) })
+
+	handle("GET /runners", func(*http.Request) (any, error) {
+		runners, err := b.Runners()
+		if runners == nil {
+			runners = []api.Runner{}
+		}
+		return runners, err
+	})
+	handle("POST /runners/{name}/check", func(r *http.Request) (any, error) { return b.CheckRunner(r.PathValue("name")) })
 
 	guarded := guard(mux, valid)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

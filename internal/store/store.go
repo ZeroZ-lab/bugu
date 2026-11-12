@@ -28,6 +28,8 @@ var ErrNotFound = errors.New("store: not found")
 //	runs/<运行编号>/run.json   运行的元数据
 //	runs/<运行编号>/task.json  运行开始时的任务配置快照
 //	runs/<运行编号>/stdout.log、stderr.log
+//	runs/<运行编号>/prompt.txt AI 命令行步骤实际发出的提示词,由执行器写入
+//	runners/<运行器名>.json    用户自己的运行器配置,由 runner 包读取
 //	state.json                每个任务已评估到的时间点
 type Store struct {
 	dir string
@@ -142,6 +144,12 @@ func (s *Store) runDir(id string) (string, error) {
 	}
 	return filepath.Join(s.dir, "runs", id), nil
 }
+
+// RunDir 返回一次运行的存档目录。
+func (s *Store) RunDir(id string) (string, error) { return s.runDir(id) }
+
+// RunnersDir 返回用户自己的运行器配置所在的目录,它可能尚不存在。
+func (s *Store) RunnersDir() string { return filepath.Join(s.dir, "runners") }
 
 // CreateRun 建立一次运行的存档,并保存当时的任务配置快照(O11)。
 func (s *Store) CreateRun(r task.Run, snapshot task.Task) error {

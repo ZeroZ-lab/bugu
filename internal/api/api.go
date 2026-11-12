@@ -37,6 +37,24 @@ type Logs struct {
 	Stderr string `json:"stderr"`
 }
 
+// Runner 是一个运行器的概况,供界面和命令行在建任务时选择。
+type Runner struct {
+	Name   string `json:"name"`
+	Title  string `json:"title,omitempty"`
+	Preset bool   `json:"preset"` // 自带的预设,而不是用户自己的配置
+	Agent  bool   `json:"agent"`  // 能否用于 AI 命令行步骤
+	// Permissions 是任务可以为它选择的权限级别,由低到高,第一个是默认值;
+	// 为空表示这个运行器不适用权限级别。
+	Permissions []string `json:"permissions"`
+}
+
+// RunnerCheck 是检查一个运行器能否使用的结果(R8)。
+type RunnerCheck struct {
+	Name   string `json:"name"`
+	OK     bool   `json:"ok"`
+	Detail string `json:"detail"` // 通过时通常是版本号,不通过时是原因
+}
+
 // Health 是健康检查的响应。
 type Health struct {
 	OK bool `json:"ok"`

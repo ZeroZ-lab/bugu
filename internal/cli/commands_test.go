@@ -252,3 +252,69 @@ func TestN2NotifyFlag(t *testing.T) {
 	}
 	fails(t, 2, "--notify", "edit", "backup", "--notify", "sometimes")
 }
+
+// 场景一在命令行下:用 --runner 和 --prompt 建 AI 命令行任务,默认只读,放开要显式写出;
+// runner list 和 runner check 对应 R8。这里用一条 shell 命令充当 AI 命令行,验证的是命令行的接线。
+func TestScenario1R8AgentTaskAndRunnerCommands(t *testing.T) {
+	d := backend(t)
+	dir := filepath.Join(os.Getenv("BUGU_HOME"), "runners")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, config string) {
+		if err := os.WriteFile(filepath.Join(dir, name+".json"), []byte(config), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("echo", `{"title": "Echo", "command": ["/bin/sh", "-c", "cat; echo \" [$*]\"", "sh"], "prompt_via": "stdin",
+		"permissions": {"read_only": ["--ro"], "write_cwd": ["--rw"]}, "check": ["/bin/sh", "-c", "echo echo 1.0"]}`)
+	write("gone", `{"command": ["bugu-test-no-such-command"], "prompt_via": "arg"}`)
+
+	list := ok(t, "runner", "list")
+	for _, want := range []string{"NAME", "echo", "Echo", "custom", "preset", "read_only,write_cwd"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("runner list 缺少 %q:\n%s", want, list)
+		}
+	}
+	if out := ok(t, "runner", "check", "echo"); !strings.Contains(out, "echo: 可用  echo 1.0") {
+		t.Errorf("runner check=%q", out)
+	}
+	code, out, errOut := bugu("runner", "check", "echo", "gone")
+	if code != 1 || !strings.Contains(out, "gone: 不可用") || !strings.Contains(errOut, "1 个运行器不可用") {
+		t.Errorf("runner check: code=%d out=%q err=%q", code, out, errOut)
+	}
+	fails(t, 1, "没有名为", "runner", "check", "missing")
+	fails(t, 2, "用法", "runner")
+	fails(t, 2, "用法", "runner", "list", "extra")
+
+	ok(t, "add", "issues", "--schedule", "0 9 * * 1-5", "--runner", "echo", "--prompt", "看 {task_name} 的新 issue")
+	if show := ok(t, "show", "issues"); !strings.Contains(show, `"runner": "echo"`) || strings.Contains(show, `"permission"`) {
+		t.Fatalf("show=%s", show)
+	}
+	id := run(t, d, "issues")
+	if _, stdout, _ := bugu("logs", id); stdout != "看 issues 的新 issue [--ro]\n" {
+		t.Fatalf("默认应以只读运行: %q", stdout)
+	}
+
+	// edit 只改给出的部分:放开权限后提示词和运行器不变。
+	ok(t, "edit", "issues", "--permission", "write_cwd")
+	id = run(t, d, "issues")
+	if _, stdout, _ := bugu("logs", id); stdout != "看 issues 的新 issue [--rw]\n" {
+		t.Fatalf("放开后: %q", stdout)
+	}
+	prompt := filepath.Join(t.TempDir(), "prompt.md")
+	if err := os.WriteFile(prompt, []byte("来自文件"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ok(t, "edit", "issues", "--prompt-file", prompt)
+	if show := ok(t, "show", "issues"); !strings.Contains(show, `"prompt": "来自文件"`) || !strings.Contains(show, `"permission": "write_cwd"`) {
+		t.Fatalf("show=%s", show)
+	}
+
+	fails(t, 1, "不支持权限级别 full", "edit", "issues", "--permission", "full")
+	fails(t, 1, "bugu runner list", "add", "x", "--schedule", "0 9 * * *", "--runner", "missing", "--prompt", "p")
+	fails(t, 2, "缺少提示词", "add", "x", "--schedule", "0 9 * * *", "--runner", "echo")
+	fails(t, 2, "缺少运行器", "add", "x", "--schedule", "0 9 * * *", "--prompt", "p")
+	fails(t, 2, "只能选一种", "add", "x", "--schedule", "0 9 * * *", "--runner", "echo", "--prompt", "p", "--command", "true")
+	fails(t, 2, "只能给一个", "add", "x", "--schedule", "0 9 * * *", "--runner", "echo", "--prompt", "p", "--prompt-file", prompt)
+}

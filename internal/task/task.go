@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"time"
 )
 
@@ -18,6 +19,8 @@ type Task struct {
 	Env           map[string]string `json:"env,omitempty"`
 	Timeout       Duration          `json:"timeout,omitzero"` // 0 表示不设总时长上限。
 	Paused        bool              `json:"paused,omitempty"`
+	// CreatedAt 由后台在创建时填写,首次运行时用作 {last_run} 的值。
+	CreatedAt time.Time `json:"created_at,omitzero"`
 }
 
 // Trigger 保存时间触发的定义;Cron 和 At 必须且只能填写一个。调度解释留给 schedule。
@@ -44,12 +47,40 @@ const (
 
 type StepType string
 
-const StepScript StepType = "script"
+const (
+	StepScript StepType = "script"
+	StepAgent  StepType = "agent" // AI 命令行(T2)
+)
 
 type Step struct {
 	Name   string   `json:"name,omitempty"`
 	Type   StepType `json:"type"`
 	Script Script   `json:"script,omitzero"`
+	Agent  Agent    `json:"agent,omitzero"`
+}
+
+// Agent 是 AI 命令行步骤:用哪个运行器,给它什么提示词,允许它做到哪一步。
+type Agent struct {
+	Runner string `json:"runner"`
+	Prompt string `json:"prompt"`
+	// Permission 是权限级别,为空时按 PermReadOnly 运行(决策记录 0008)。
+	Permission string `json:"permission,omitempty"`
+}
+
+// 权限级别,由低到高。
+const (
+	PermReadOnly = "read_only" // 不修改文件
+	PermWriteCwd = "write_cwd" // 可以修改工作目录内的文件
+	PermFull     = "full"      // 不加限制
+)
+
+// Permissions 按由低到高的顺序列出全部权限级别。
+var Permissions = []string{PermReadOnly, PermWriteCwd, PermFull}
+
+// PermissionRank 返回级别的高低次序,数字越大权限越高;不认识的级别返回 false。
+func PermissionRank(level string) (int, bool) {
+	i := slices.Index(Permissions, level)
+	return i, i >= 0
 }
 
 // Script 的 Path 和 Command 必须且只能填写一个。Path 直接执行,解释器由文件决定;
@@ -149,6 +180,7 @@ type Run struct {
 	StartedAt    time.Time `json:"started_at,omitzero"`
 	FinishedAt   time.Time `json:"finished_at,omitzero"`
 	ExitCode     *int      `json:"exit_code,omitempty"`
+	Permission   string    `json:"permission,omitempty"` // AI 命令行步骤实际使用的权限级别。
 	Stdout       string    `json:"-"`
 	Stderr       string    `json:"-"`
 }

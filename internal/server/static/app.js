@@ -118,7 +118,7 @@ function describeTrigger(tr) {
 }
 
 // ---- 视图切换 ----
-const state = { view: "tasks", tasks: [], editing: null, runId: null, runDone: true, rendered: {} };
+const state = { view: "tasks", tasks: [], runners: [], editing: null, runId: null, runDone: true, rendered: {} };
 
 // changed 报告某个列表的数据和上次渲染时相比有没有变。没变就不重建表格,
 // 这样定期刷新不会打断正在进行的点击和键盘操作。
@@ -209,7 +209,39 @@ function syncForm() {
   }
 }
 
-function openTaskDialog(t) {
+// 权限级别在界面上的说法(决策记录 0008)。
+const PERMISSION = {
+  read_only: "只读,不修改文件",
+  write_cwd: "可以修改工作目录里的文件",
+  full: "不加限制",
+};
+
+// fillRunners 把可用于 AI 命令行步骤的运行器填进下拉框。selected 不在其中时
+// (配置已被删掉)也保留为一项,保存时由后台说明问题。
+function fillRunners(selected) {
+  const select = form.elements.runner;
+  const usable = state.runners.filter((r) => r.agent);
+  const options = usable.map((r) => h("option", { value: r.name }, r.title ? `${r.title}(${r.name})` : r.name));
+  if (selected && !usable.some((r) => r.name === selected)) options.push(h("option", { value: selected }, selected + "(找不到这个运行器)"));
+  select.replaceChildren(...options);
+  if (selected) select.value = selected;
+  $("runner-hint").textContent = options.length
+    ? "这台主机上已配置的 AI 命令行。能否启动可用 bugu runner check 检查。"
+    : "这台主机上没有可用的运行器。";
+}
+
+// fillPermissions 按所选运行器列出可选的权限级别,第一个是默认值。
+function fillPermissions(selected) {
+  const select = form.elements.permission;
+  const r = state.runners.find((x) => x.name === form.elements.runner.value);
+  const levels = (r && r.permissions) || [];
+  select.replaceChildren(...levels.map((l, i) => h("option", { value: l }, (PERMISSION[l] || l) + (i === 0 ? "(默认)" : ""))));
+  if (levels.includes(selected)) select.value = selected;
+  show($("permission-field"), levels.length > 0);
+}
+
+async function openTaskDialog(t) {
+  state.runners = await api("GET", "/runners");
   state.editing = t || null;
   form.reset();
   setError($("task-error"), "");
@@ -222,10 +254,15 @@ function openTaskDialog(t) {
     f.cron.value = t.trigger.cron || "";
     f.preset.value = [...f.preset.options].some((o) => o.value === t.trigger.cron) ? t.trigger.cron : "";
     if (t.trigger.at) f.at.value = toLocalInput(t.trigger.at);
-    const script = (t.steps[0] && t.steps[0].script) || {};
-    f.kind.value = script.path ? "path" : "command";
+    const step = t.steps[0] || {};
+    const script = step.script || {};
+    const agent = step.type === "agent" ? step.agent : null;
+    f.kind.value = agent ? "agent" : script.path ? "path" : "command";
     f.command.value = script.command || "";
     f.path.value = script.path || "";
+    fillRunners(agent ? agent.runner : "");
+    fillPermissions(agent ? agent.permission : "");
+    f.prompt.value = agent ? agent.prompt : "";
     f.cwd.value = t.cwd || "";
     f.timeout.value = durationToMinutes(t.timeout);
     const system = (t.notifications || []).find((n) => n.channel === "system");
@@ -233,6 +270,8 @@ function openTaskDialog(t) {
     f.env.value = Object.entries(t.env || {}).map(([k, v]) => `${k}=${v}`).join("\n");
   } else {
     f.cron.value = f.preset.value;
+    fillRunners("");
+    fillPermissions("");
   }
   syncForm();
   $("task-dialog").showModal();
@@ -253,9 +292,18 @@ function readTask() {
     t.trigger = { at: new Date(f.at.value).toISOString() };
   }
 
-  const script = f.kind.value === "command" ? { command: f.command.value.trim() } : { path: f.path.value.trim() };
-  if (!script.command && !script.path) throw new Error(f.kind.value === "command" ? "请填写要运行的命令。" : "请填写脚本文件的路径。");
-  t.steps = [{ type: "script", script }];
+  if (f.kind.value === "agent") {
+    if (!f.runner.value) throw new Error("请选择运行器。");
+    if (!f.prompt.value.trim()) throw new Error("请填写提示词。");
+    const agent = { runner: f.runner.value, prompt: f.prompt.value };
+    // 默认级别不写进任务,放开的才显式写出。
+    if (f.permission.selectedIndex > 0) agent.permission = f.permission.value;
+    t.steps = [{ type: "agent", agent }];
+  } else {
+    const script = f.kind.value === "command" ? { command: f.command.value.trim() } : { path: f.path.value.trim() };
+    if (!script.command && !script.path) throw new Error(f.kind.value === "command" ? "请填写要运行的命令。" : "请填写脚本文件的路径。");
+    t.steps = [{ type: "script", script }];
+  }
 
   t.cwd = f.cwd.value.trim() || undefined;
   t.timeout = Number(f.timeout.value) > 0 ? `${Math.round(Number(f.timeout.value))}m` : undefined;
@@ -289,6 +337,7 @@ form.addEventListener("submit", async (event) => {
 });
 form.addEventListener("change", (event) => {
   if (event.target.name === "preset" && event.target.value) form.elements.cron.value = event.target.value;
+  if (event.target.name === "runner") fillPermissions(form.elements.permission.value);
   syncForm();
 });
 form.elements.cron.addEventListener("input", () => {
@@ -296,7 +345,7 @@ form.elements.cron.addEventListener("input", () => {
   f.preset.value = [...f.preset.options].some((o) => o.value === f.cron.value.trim()) ? f.cron.value.trim() : "";
 });
 $("task-cancel").addEventListener("click", () => $("task-dialog").close());
-$("new-task").addEventListener("click", () => openTaskDialog(null));
+$("new-task").addEventListener("click", () => run(() => openTaskDialog(null)));
 
 // ---- 运行记录 ----
 async function loadRuns() {
@@ -343,6 +392,7 @@ async function openRun(id) {
       ["退出码", r.exit_code === undefined ? "-" : String(r.exit_code)],
       ["命令", (r.command || []).join(" ") || "-"],
     ];
+    if (r.permission) rows.push(["权限", PERMISSION[r.permission] || r.permission]);
     if (r.scheduled_for) rows.push(["原定时间", formatTime(r.scheduled_for)]);
     if (r.note) rows.push(["说明", r.note]);
     if (r.error) rows.push(["原因", r.error]);

@@ -32,6 +32,8 @@ const usage = `bugu:桌面优先的定时任务应用
   bugu add <任务> --schedule <cron> (--command <命令> | --path <脚本>)
            [--at <时间>] [--cwd <目录>] [--env 名=值]... [--timeout <时长>]
            [--notify on_content|on_failure|always|none]
+  bugu add <任务> --schedule <cron> --runner <运行器> (--prompt <提示词> | --prompt-file <文件>)
+           [--permission read_only|write_cwd|full]  让 AI 命令行执行,默认只读
   bugu add --file <文件>             从 JSON 文件新建任务,- 表示标准输入
   bugu list                          列出任务及下次运行时间
   bugu show <任务>                   查看任务定义(JSON,可用于 add --file)
@@ -41,9 +43,12 @@ const usage = `bugu:桌面优先的定时任务应用
   bugu pause <任务> / resume <任务>  暂停和恢复
   bugu runs [任务] [-n 条数]         运行历史
   bugu logs <运行编号>               查看某次运行的输出
+  bugu runner list                   列出运行器及各自可选的权限级别
+  bugu runner check [运行器]...      检查运行器是否已安装、能否启动,不给名字则检查全部
   bugu version                       显示版本
 
-数据目录默认为 ~/.bugu,可用环境变量 BUGU_HOME 指定。
+提示词和命令里可以使用 {date}、{time}、{datetime}、{last_run}、{run_dir}、{task_name}。
+数据目录默认为 ~/.bugu,可用环境变量 BUGU_HOME 指定;自定义运行器放在其中的 runners/ 下。
 其余命令尚未实现,见 docs/PRD.md 第 11 章的里程碑。
 `
 
@@ -58,6 +63,7 @@ type env struct {
 	stdin          io.Reader
 	stdout, stderr io.Writer
 	home           string
+	shell          string // 用户的登录 shell,启动后台时交给它(E1)
 }
 
 // Main 执行一次命令行调用,返回进程退出码。
@@ -80,7 +86,7 @@ func Main(version string, args []string, stdout, stderr io.Writer) int {
 	}
 	commands := map[string]func(*env, []string) error{
 		"app": appCmd, "serve": serveCmd, "add": addCmd, "list": listCmd, "show": showCmd, "edit": editCmd, "rm": rmCmd,
-		"run": runCmd, "pause": pauseCmd, "resume": resumeCmd, "runs": runsCmd, "logs": logsCmd,
+		"run": runCmd, "pause": pauseCmd, "resume": resumeCmd, "runs": runsCmd, "logs": logsCmd, "runner": runnerCmd,
 	}
 	cmd, ok := commands[args[0]]
 	if !ok {
@@ -92,7 +98,7 @@ func Main(version string, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "bugu:", err)
 		return 1
 	}
-	err = cmd(&env{stdin: os.Stdin, stdout: stdout, stderr: stderr, home: home}, args[1:])
+	err = cmd(&env{stdin: os.Stdin, stdout: stdout, stderr: stderr, home: home, shell: os.Getenv("SHELL")}, args[1:])
 	var u errUsage
 	switch {
 	case err == nil:
@@ -169,7 +175,7 @@ func serveCmd(e *env, args []string) error {
 
 // serve 运行后台直到 ctx 结束。
 func serve(ctx context.Context, e *env, listen string) error {
-	d, err := daemon.Start(daemon.Options{Home: e.home, Listen: listen, Log: e.stderr})
+	d, err := daemon.Start(daemon.Options{Home: e.home, Listen: listen, Log: e.stderr, LoginShell: e.shell})
 	if err != nil {
 		return err
 	}
@@ -197,6 +203,7 @@ type taskFlags struct {
 	fs                                     *flag.FlagSet
 	schedule, at, command, path, cwd, file string
 	timeout, notify                        string
+	runner, prompt, promptFile, permission string
 	env                                    envFlag
 }
 
@@ -210,6 +217,10 @@ func newTaskFlags(name string) *taskFlags {
 	f.fs.StringVar(&f.timeout, "timeout", "", "")
 	f.fs.StringVar(&f.file, "file", "", "")
 	f.fs.StringVar(&f.notify, "notify", "", "")
+	f.fs.StringVar(&f.runner, "runner", "", "")
+	f.fs.StringVar(&f.prompt, "prompt", "", "")
+	f.fs.StringVar(&f.promptFile, "prompt-file", "", "")
+	f.fs.StringVar(&f.permission, "permission", "", "")
 	f.fs.Var(f.env, "env", "")
 	return f
 }
@@ -240,8 +251,46 @@ func (f *taskFlags) apply(t *task.Task) error {
 		}
 		t.Trigger = task.Trigger{At: at}
 	}
-	if given["command"] || given["path"] {
+	script := given["command"] || given["path"]
+	agent := given["runner"] || given["prompt"] || given["prompt-file"] || given["permission"]
+	if script && agent {
+		return usagef("脚本(--command、--path)和 AI 命令行(--runner、--prompt、--prompt-file、--permission)只能选一种")
+	}
+	if given["prompt"] && given["prompt-file"] {
+		return usagef("--prompt 和 --prompt-file 只能给一个")
+	}
+	if script {
 		t.Steps = []task.Step{{Type: task.StepScript, Script: task.Script{Command: f.command, Path: f.path}}}
+	}
+	if agent {
+		// 已经是 AI 命令行步骤时只改给出的部分,否则换成一个新的。
+		var a task.Agent
+		if len(t.Steps) == 1 && t.Steps[0].Type == task.StepAgent {
+			a = t.Steps[0].Agent
+		}
+		if given["runner"] {
+			a.Runner = f.runner
+		}
+		if given["prompt"] {
+			a.Prompt = f.prompt
+		}
+		if given["prompt-file"] {
+			raw, err := os.ReadFile(f.promptFile)
+			if err != nil {
+				return fmt.Errorf("读取提示词文件: %w", err)
+			}
+			a.Prompt = string(raw)
+		}
+		if given["permission"] {
+			a.Permission = f.permission
+		}
+		if a.Runner == "" {
+			return usagef("缺少运行器:用 --runner 指定,可用 bugu runner list 查看有哪些")
+		}
+		if a.Prompt == "" {
+			return usagef("缺少提示词:用 --prompt 直接给出,或用 --prompt-file 从文件读取")
+		}
+		t.Steps = []task.Step{{Type: task.StepAgent, Agent: a}}
 	}
 	if given["cwd"] {
 		t.Cwd = f.cwd
@@ -334,7 +383,7 @@ func addCmd(e *env, args []string) error {
 			return usagef("缺少触发方式:用 --schedule 给出 cron 表达式,或用 --at 给出一次性时间点")
 		}
 		if len(t.Steps) == 0 {
-			return usagef("缺少要执行的内容:用 --command 给出一条命令,或用 --path 给出脚本文件")
+			return usagef("缺少要执行的内容:用 --command 给出一条命令,用 --path 给出脚本文件,或用 --runner 和 --prompt 交给 AI 命令行")
 		}
 	}
 	c, err := client.Local(e.home)
@@ -598,6 +647,71 @@ func logsCmd(e *env, args []string) error {
 		fmt.Fprintf(e.stderr, "bugu: 运行 %s 尚未结束,输出在结束后才能查看\n", id)
 	case logs.Stdout == "" && logs.Stderr == "":
 		fmt.Fprintf(e.stderr, "bugu: 运行 %s(%s)没有输出\n", id, r.Status)
+	}
+	return nil
+}
+
+func runnerCmd(e *env, args []string) error {
+	rest, err := parse(flag.NewFlagSet("runner", flag.ContinueOnError), args)
+	if err != nil {
+		return err
+	}
+	if len(rest) == 0 || (rest[0] != "list" && rest[0] != "check") || (rest[0] == "list" && len(rest) > 1) {
+		return usagef("用法:bugu runner list,或 bugu runner check [运行器]...")
+	}
+	c, err := client.Local(e.home)
+	if err != nil {
+		return err
+	}
+	if rest[0] == "list" {
+		runners, err := c.Runners()
+		if err != nil {
+			return err
+		}
+		w := tabwriter.NewWriter(e.stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "NAME\tTITLE\tSOURCE\tPERMISSIONS")
+		for _, r := range runners {
+			source := "custom"
+			if r.Preset {
+				source = "preset"
+			}
+			levels := strings.Join(r.Permissions, ",")
+			switch {
+			case !r.Agent:
+				levels = "(不能用于 AI 命令行步骤)"
+			case levels == "":
+				levels = "-"
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.Name, r.Title, source, levels)
+		}
+		return w.Flush()
+	}
+
+	names := rest[1:]
+	if len(names) == 0 {
+		runners, err := c.Runners()
+		if err != nil {
+			return err
+		}
+		for _, r := range runners {
+			names = append(names, r.Name)
+		}
+	}
+	failed := 0
+	for _, name := range names {
+		check, err := c.CheckRunner(name)
+		if err != nil {
+			return err
+		}
+		mark := "可用"
+		if !check.OK {
+			mark = "不可用"
+			failed++
+		}
+		fmt.Fprintf(e.stdout, "%s: %s  %s\n", name, mark, check.Detail)
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d 个运行器不可用", failed)
 	}
 	return nil
 }

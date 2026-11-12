@@ -383,7 +383,7 @@ func TestInvalidDefinitionsAndMissingObjects(t *testing.T) {
 		"任务名":   command("bad name", "0 2 * * *", "true"),
 		"第 1 段": command("x", "61 2 * * *", "true"),
 		"二选一":   {Name: "x", Steps: good.Steps},
-		"脚本步骤":  {Name: "x", Trigger: good.Trigger},
+		"一个步骤":  {Name: "x", Trigger: good.Trigger},
 		"已经过去":  {Name: "x", Trigger: task.Trigger{At: epoch.Add(-time.Hour)}, Steps: good.Steps},
 		"步骤类型":  {Name: "x", Trigger: good.Trigger, Steps: []task.Step{{Type: "text"}}},
 	}

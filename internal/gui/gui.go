@@ -91,7 +91,7 @@ func (a *app) connect() error {
 		a.logf("本机已有后台在运行(%s),这个窗口只作为它的界面;系统通知由承载后台的那个应用发出", addr)
 		return nil
 	}
-	d, err := daemon.Start(daemon.Options{Home: a.home, Notify: a.notify, Log: logWriter(a.logf)})
+	d, err := daemon.Start(daemon.Options{Home: a.home, Notify: a.notify, Log: logWriter(a.logf), LoginShell: os.Getenv("SHELL")})
 	if err != nil {
 		return err
 	}

@@ -145,6 +145,15 @@ func (c *Client) Resume(name string) (info api.TaskInfo, err error) {
 	return info, c.do("POST", taskPath(name, "/resume"), nil, nil, &info)
 }
 
+func (c *Client) Runners() (runners []api.Runner, err error) {
+	return runners, c.do("GET", "/runners", nil, nil, &runners)
+}
+
+// CheckRunner 让后台检查一个运行器能否使用,可能需要几秒。
+func (c *Client) CheckRunner(name string) (check api.RunnerCheck, err error) {
+	return check, c.do("POST", "/runners/"+url.PathEscape(name)+"/check", nil, nil, &check)
+}
+
 // NewKey 生成一个幂等标识。
 func NewKey() string {
 	var b [16]byte

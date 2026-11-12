@@ -4,7 +4,7 @@
 
 名字取自布谷鸟:到点报时。
 
-**状态:开发早期。** 目前可以在桌面应用或命令行里管理和运行定时脚本,AI 命令行步骤尚未实现。进度见需求文档第 11 章。
+**状态:开发早期。** 目前可以在桌面应用或命令行里管理和运行定时任务,任务可以是脚本,也可以交给一个 AI 命令行;多步骤和结果处理尚未实现。进度见需求文档第 11 章。
 
 - 需求与里程碑:[docs/PRD.md](docs/PRD.md)
 - 架构:[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
@@ -34,5 +34,15 @@ bin/bugu run backup           # 不等到 2 点,立即试跑一次
 bin/bugu runs
 bin/bugu logs <运行编号>
 ```
+
+让 AI 命令行按时干活:
+
+```sh
+bin/bugu runner check         # 本机装了哪些 AI 命令行、能否启动
+bin/bugu add issues --schedule "0 9 * * 1-5" --runner claude --cwd ~/projects/site \
+  --prompt "列出 {last_run} 之后的新 issue,按 bug、需求、提问分类。"
+```
+
+AI 命令行默认以只读方式运行;确实需要它修改文件时加 `--permission write_cwd`。
 
 全部命令见 `bin/bugu help`。

@@ -53,6 +53,11 @@ func (f *fake) Logs(id string) (api.Logs, error) {
 	return api.Logs{Stdout: "out"}, f.call("Logs " + id)
 }
 
+func (f *fake) Runners() ([]api.Runner, error) { return nil, f.call("Runners") }
+func (f *fake) CheckRunner(name string) (api.RunnerCheck, error) {
+	return api.RunnerCheck{Name: name, OK: true}, f.call("CheckRunner " + name)
+}
+
 func serve(f *fake) http.Handler { return New(f, func(got string) bool { return got == token }) }
 
 func do(h http.Handler, method, path, body string, header map[string]string) *httptest.ResponseRecorder {
@@ -80,6 +85,8 @@ var routes = []struct{ method, path, call string }{
 	{"GET", "/runs", "Runs "},
 	{"GET", "/runs/r1", "Run r1"},
 	{"GET", "/runs/r1/logs", "Logs r1"},
+	{"GET", "/runners", "Runners"},
+	{"POST", "/runners/stats/check", "CheckRunner stats"},
 }
 
 // C1/C4: 每个接口在没有有效令牌时都被拒绝,并且后台逻辑不会被执行。

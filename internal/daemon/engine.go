@@ -13,6 +13,7 @@ import (
 	"bugu/internal/clock"
 	"bugu/internal/exec"
 	"bugu/internal/notify"
+	"bugu/internal/runner"
 	"bugu/internal/schedule"
 	"bugu/internal/store"
 	"bugu/internal/task"
@@ -21,11 +22,12 @@ import (
 // engine 是后台的核心:按时触发任务、管理进行中的运行、响应接口的请求。
 // 它实现 server.Backend。
 type engine struct {
-	clock clock.Clock
-	store *store.Store
-	exec  exec.Executor
-	ctx   context.Context // 后台关闭时取消,进行中的运行随之终止
-	logf  func(format string, args ...any)
+	clock   clock.Clock
+	store   *store.Store
+	runners runner.Set
+	exec    exec.Executor
+	ctx     context.Context // 后台关闭时取消,进行中的运行随之终止
+	logf    func(format string, args ...any)
 	// notify 把系统通知交给界面去显示;没有界面时为 nil(N1)。
 	notify func(notify.Message)
 
@@ -39,9 +41,11 @@ type engine struct {
 // 启动时从最近这么多条运行记录里恢复幂等标识。
 const recentRuns = 500
 
-func newEngine(ctx context.Context, c clock.Clock, st *store.Store, logf func(string, ...any)) (*engine, error) {
+func newEngine(ctx context.Context, c clock.Clock, st *store.Store, loginShell string, logf func(string, ...any)) (*engine, error) {
+	runners := runner.Open(st.RunnersDir())
 	e := &engine{
-		clock: c, store: st, exec: exec.Executor{Clock: c}, ctx: ctx, logf: logf,
+		clock: c, store: st, runners: runners, ctx: ctx, logf: logf,
+		exec:    exec.Executor{Clock: c, Runners: runners.Get, LoginShell: loginShell},
 		running: map[string]string{}, keys: map[string]string{},
 	}
 	// 上一个后台留下的"运行中"已经没有进程在管,标为中断(O3)。
@@ -156,8 +160,11 @@ func (e *engine) start(t task.Task, trigger string, scheduledFor time.Time, note
 
 func (e *engine) execute(r task.Run, t task.Task) {
 	defer e.wg.Done()
-	res, err := e.exec.Run(e.ctx, t)
+	info := exec.Info{LastRun: e.lastSuccess(t.Name)}
+	info.RunDir, _ = e.store.RunDir(r.ID)
+	res, err := e.exec.Run(e.ctx, t, info)
 	r.Status, r.Command, r.ExitCode, r.Stdout, r.Stderr = res.Status, res.Command, res.ExitCode, res.Stdout, res.Stderr
+	r.Permission = res.Permission
 	if !res.StartedAt.IsZero() {
 		r.StartedAt = res.StartedAt
 	}
@@ -171,6 +178,14 @@ func (e *engine) execute(r task.Run, t task.Task) {
 	if r.Status == task.Canceled {
 		r.Status, r.Error = task.Interrupted, "后台关闭,运行被终止"
 	}
+	// 只读运行失败,有可能是因为任务其实需要写权限。Bugu 分辨不出来,所以只作提示(决策记录 0008)。
+	if r.Status == task.Failed && r.Permission == task.PermReadOnly {
+		hint := "本次以只读权限运行;如果失败是因为需要修改文件,可以在任务里放开权限"
+		if r.Note != "" {
+			hint = r.Note + ";" + hint
+		}
+		r.Note = hint
+	}
 	if err := e.store.FinishRun(r); err != nil {
 		e.logf("保存运行 %s 的结果失败: %v", r.ID, err)
 	}
@@ -181,6 +196,20 @@ func (e *engine) execute(r task.Run, t task.Task) {
 	e.mu.Lock()
 	delete(e.running, t.Name)
 	e.mu.Unlock()
+}
+
+// lastSuccess 返回任务上次成功运行的开始时间,没有时返回零值。
+func (e *engine) lastSuccess(name string) time.Time {
+	runs, err := e.store.ListRuns(name, 0)
+	if err != nil {
+		e.logf("读取任务 %s 的运行记录失败: %v", name, err)
+	}
+	for _, r := range runs {
+		if r.Status == task.Succeeded {
+			return r.StartedAt
+		}
+	}
+	return time.Time{}
 }
 
 func invalid(format string, args ...any) error {
@@ -203,7 +232,7 @@ func (e *engine) check(t task.Task) error {
 	if err := schedule.Check(t.Trigger); err != nil {
 		return invalid("%v", err)
 	}
-	if err := exec.Validate(t); err != nil {
+	if err := exec.Validate(t, e.runners.Get); err != nil {
 		return invalid("%v", err)
 	}
 	return nil
@@ -251,7 +280,9 @@ func (e *engine) Task(name string) (api.TaskInfo, error) {
 	return e.info(t), nil
 }
 
+// sameDefinition 比较两个任务定义,不看由后台填写的创建时间。
 func sameDefinition(a, b task.Task) bool {
+	a.CreatedAt, b.CreatedAt = time.Time{}, time.Time{}
 	x, _ := json.Marshal(a)
 	y, _ := json.Marshal(b)
 	return bytes.Equal(x, y)
@@ -275,6 +306,7 @@ func (e *engine) CreateTask(t task.Task) (api.TaskInfo, error) {
 	if !t.Trigger.At.IsZero() && !t.Trigger.At.After(now) {
 		return api.TaskInfo{}, invalid("一次性时间点 %s 已经过去", t.Trigger.At.Format(time.RFC3339))
 	}
+	t.CreatedAt = now
 	if err := e.store.SaveTask(t); err != nil {
 		return api.TaskInfo{}, err
 	}
@@ -298,6 +330,7 @@ func (e *engine) UpdateTask(name string, t task.Task) (api.TaskInfo, error) {
 	if err := e.check(t); err != nil {
 		return api.TaskInfo{}, err
 	}
+	t.CreatedAt = old.CreatedAt
 	if err := e.store.SaveTask(t); err != nil {
 		return api.TaskInfo{}, err
 	}
@@ -370,4 +403,34 @@ func (e *engine) Logs(id string) (api.Logs, error) {
 		return api.Logs{}, noRun(id)
 	}
 	return api.Logs{Stdout: stdout, Stderr: stderr}, err
+}
+
+func (e *engine) Runners() ([]api.Runner, error) {
+	list, err := e.runners.List()
+	if err != nil {
+		if list == nil {
+			return nil, err
+		}
+		e.logf("部分运行器配置有问题,已忽略: %v", err)
+	}
+	out := make([]api.Runner, len(list))
+	for i, r := range list {
+		levels := r.Levels()
+		if levels == nil {
+			levels = []string{}
+		}
+		out[i] = api.Runner{Name: r.Name, Title: r.Title, Preset: r.Preset, Agent: r.PromptVia != "", Permissions: levels}
+	}
+	return out, nil
+}
+
+func (e *engine) CheckRunner(name string) (api.RunnerCheck, error) {
+	r, err := e.runners.Get(name)
+	if errors.Is(err, runner.ErrNotFound) {
+		return api.RunnerCheck{}, &api.Error{Code: api.CodeNotFound, Message: fmt.Sprintf("没有名为 %q 的运行器,可用 bugu runner list 查看现有的运行器", name)}
+	} else if err != nil {
+		return api.RunnerCheck{}, invalid("%v", err)
+	}
+	ok, detail := e.exec.Check(e.ctx, r)
+	return api.RunnerCheck{Name: name, OK: ok, Detail: detail}, nil
 }

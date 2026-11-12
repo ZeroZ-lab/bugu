@@ -90,3 +90,28 @@ func TestN2ValidateNotifications(t *testing.T) {
 		}
 	}
 }
+
+// T2 与决策记录 0008: AI 命令行步骤能原样存取;没有放开权限时不写出权限字段;级别有高低次序。
+func TestT2AgentStepRoundTripsAndPermissionsAreOrdered(t *testing.T) {
+	in := Task{Name: "issues", Trigger: Trigger{Cron: "0 9 * * 1-5"}, Steps: []Step{{Type: StepAgent, Agent: Agent{Runner: "r", Prompt: "p"}}}}
+	b, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "permission") || strings.Contains(string(b), `"script"`) || strings.Contains(string(b), "created_at") {
+		t.Fatalf("不应写出空字段: %s", b)
+	}
+	var out Task
+	if err := json.Unmarshal(b, &out); err != nil || out.Steps[0].Agent != in.Steps[0].Agent {
+		t.Fatalf("读回: %+v, %v", out, err)
+	}
+	ro, _ := PermissionRank(PermReadOnly)
+	rw, _ := PermissionRank(PermWriteCwd)
+	full, _ := PermissionRank(PermFull)
+	if !(ro < rw && rw < full) {
+		t.Fatalf("级别次序: %d %d %d", ro, rw, full)
+	}
+	if _, ok := PermissionRank("root"); ok {
+		t.Fatal("不认识的级别")
+	}
+}

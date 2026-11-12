@@ -1,0 +1,11 @@
+{
+  "name": "pi",
+  "title": "Pi",
+  "command": ["pi", "--print"],
+  "prompt_via": "stdin",
+  "permissions": {
+    "read_only": ["--tools", "read,grep,find,ls"],
+    "full": []
+  },
+  "check": ["pi", "--version"]
+}
