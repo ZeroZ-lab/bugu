@@ -8,6 +8,7 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -204,7 +205,9 @@ func (e Executor) Run(ctx context.Context, t task.Task, info Info) (r task.Run, 
 		}
 	}
 
-	p.argv = e.wrap(argv, t.Env)
+	var carry map[string]string
+	p.argv, carry = e.wrap(argv, t.Env)
+	p.env = with(p.env, carry)
 	res, err := e.launch(ctx, p)
 	r.Status, r.StartedAt, r.FinishedAt, r.ExitCode, r.Stdout, r.Stderr = res.Status, res.StartedAt, res.FinishedAt, res.ExitCode, res.Stdout, res.Stderr
 	if s.Type == task.StepAgent && r.Status == task.Succeeded {
@@ -231,7 +234,8 @@ func (e Executor) Check(ctx context.Context, rn runner.Runner) (ok bool, detail 
 	if len(rn.Check) == 0 {
 		return true, "命令 " + rn.Command[0] + " 存在"
 	}
-	res, err := e.launch(ctx, process{argv: e.wrap(rn.Check, nil), timeout: checkTimeout})
+	check, _ := e.wrap(rn.Check, nil)
+	res, err := e.launch(ctx, process{argv: check, timeout: checkTimeout})
 	line := firstLine(res.Stdout)
 	if line == "" {
 		line = firstLine(res.Stderr)
@@ -281,26 +285,52 @@ func (e Executor) posixShell() bool {
 	return false
 }
 
+// carryPrefix 是任务的环境变量在穿过登录 shell 时临时使用的名字前缀。
+const carryPrefix = "BUGU_CARRY_"
+
+var shellName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
 // wrap 让命令经登录 shell 启动(E1)。shell 读完自己的启动文件后用 exec 换成目标命令,
-// 所以进程组、退出码和输出都与直接启动相同。任务自己的环境变量在 shell 启动之后再设置一次,
-// 以免被启动文件覆盖。
-func (e Executor) wrap(argv []string, env map[string]string) []string {
+// 所以进程组、退出码和输出都与直接启动相同。
+//
+// 任务自己的环境变量要在启动文件之后再设置一次,以免被覆盖。它们的值可能是密钥,
+// 不能出现在命令行参数里(同一台机器上的其他用户看得到),所以用带前缀的名字放进进程环境,
+// 由脚本在启动文件之后改回原名;脚本里只出现变量名。返回的 carry 要并入子进程的环境。
+// 名字不是合法 shell 标识符的变量无法这样恢复,它们只按原名传入。
+func (e Executor) wrap(argv []string, env map[string]string) (wrapped []string, carry map[string]string) {
 	if !e.posixShell() {
-		return argv
+		return argv, nil
 	}
-	wrapped := []string{e.LoginShell, "-l", "-c", `exec "$@"`, "bugu"}
-	if len(env) > 0 {
-		wrapped = append(wrapped, "/usr/bin/env")
-		keys := make([]string, 0, len(env))
-		for k := range env {
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		if shellName.MatchString(k) {
 			keys = append(keys, k)
 		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			wrapped = append(wrapped, k+"="+env[k])
-		}
 	}
-	return append(wrapped, argv...)
+	sort.Strings(keys)
+	var script strings.Builder
+	carry = map[string]string{}
+	for _, k := range keys {
+		carry[carryPrefix+k] = env[k]
+		fmt.Fprintf(&script, "%s=$%s%s; export %s; unset %s%s; ", k, carryPrefix, k, k, carryPrefix, k)
+	}
+	script.WriteString(`exec "$@"`)
+	return append([]string{e.LoginShell, "-l", "-c", script.String(), "bugu"}, argv...), carry
+}
+
+// with 返回 base 加上 extra 的环境变量表,不修改两者。
+func with(base, extra map[string]string) map[string]string {
+	if len(extra) == 0 {
+		return base
+	}
+	merged := make(map[string]string, len(base)+len(extra))
+	for k, v := range base {
+		merged[k] = v
+	}
+	for k, v := range extra {
+		merged[k] = v
+	}
+	return merged
 }
 
 // resolve 报告命令 name 在子进程将要使用的环境里能否找到。
@@ -316,8 +346,8 @@ func (e Executor) resolve(ctx context.Context, name, cwd string, env map[string]
 		_, err := osexec.LookPath(name)
 		return err == nil, nil
 	}
-	probe := e.wrap([]string{"/bin/sh", "-c", `command -v "$1" >/dev/null 2>&1`, "bugu", name}, env)
-	res, err := e.launch(ctx, process{argv: probe, dir: cwd, env: env, timeout: checkTimeout})
+	probe, carry := e.wrap([]string{"/bin/sh", "-c", `command -v "$1" >/dev/null 2>&1`, "bugu", name}, env)
+	res, err := e.launch(ctx, process{argv: probe, dir: cwd, env: with(env, carry), timeout: checkTimeout})
 	switch {
 	case res.Status == task.Succeeded:
 		return true, nil

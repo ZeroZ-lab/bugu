@@ -178,6 +178,15 @@ func TestE1E2E6LoginShell(t *testing.T) {
 	if err == nil || r.Stdout != "1|from task" || r.ExitCode == nil || *r.ExitCode != 7 {
 		t.Fatalf("脚本: result=%+v err=%v", r, err)
 	}
+	// 任务的环境变量可能是密钥:它的值不能出现在启动命令的参数里,临时用的名字也不留给子进程。
+	argv, carry := e.wrap([]string{"true"}, map[string]string{"BUGU_T": "s3cret", "odd name": "x"})
+	if strings.Contains(strings.Join(argv, " "), "s3cret") || carry["BUGU_CARRY_BUGU_T"] != "s3cret" || len(carry) != 1 {
+		t.Fatalf("argv=%q carry=%v", argv, carry)
+	}
+	input.Steps[0].Script.Command = `env | grep -c BUGU_CARRY_ ; true`
+	if r, err := e.Run(context.Background(), input, Info{}); err != nil || r.Stdout != "0\n" {
+		t.Fatalf("临时变量应已清除: result=%+v err=%v", r, err)
+	}
 	if !reflect.DeepEqual(r.Command[:2], []string{"/bin/sh", "-c"}) {
 		t.Fatalf("记录的命令应是步骤本身的命令,不含登录 shell: %v", r.Command)
 	}
