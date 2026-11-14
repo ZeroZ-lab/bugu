@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"bugu/internal/daemon"
 )
@@ -433,7 +434,7 @@ func TestS12JitterFlag(t *testing.T) {
 		t.Fatalf("show:\n%s", show)
 	}
 	ok(t, "edit", "j", "--schedule", "30 9 * * *")
-	if list := ok(t, "list"); !strings.Contains(list, "30 9 * * * ±10m0s") {
+	if list := ok(t, "list"); !strings.Contains(list, "30 9 * * * ±10m\n") && !strings.Contains(list, "30 9 * * * ±10m ") {
 		t.Fatalf("换时间后应保留偏移:\n%s", list)
 	}
 	fails(t, 1, "随机偏移 20m0s 太大", "edit", "j", "--schedule", "*/30 * * * *", "--jitter", "20m")
@@ -442,5 +443,14 @@ func TestS12JitterFlag(t *testing.T) {
 	ok(t, "edit", "j", "--jitter", "0")
 	if show := ok(t, "show", "j"); strings.Contains(show, "jitter") {
 		t.Fatalf("--jitter 0 之后:\n%s", show)
+	}
+}
+
+// S12:列表里的偏移去掉末尾为零的单位,和界面一致。
+func TestS12ShortDuration(t *testing.T) {
+	for d, want := range map[time.Duration]string{10 * time.Minute: "10m", time.Hour: "1h", 90 * time.Minute: "1h30m", 90 * time.Second: "1m30s", 45 * time.Second: "45s"} {
+		if got := shortDuration(d); got != want {
+			t.Errorf("shortDuration(%v) = %q,期望 %q", d, got, want)
+		}
 	}
 }

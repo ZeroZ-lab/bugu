@@ -102,8 +102,11 @@ export class App extends Component {
   // 浏览器前进后退、手改地址时,页面跟着地址走。
   private syncRoute = () => {
     this.route = currentRoute();
-    if (this.route) this.view = "tasks";
-    else this.formDirty = false;
+    // 进入表单页时关掉运行详情:对话框是模态的,留着它表单就点不了。
+    if (this.route) {
+      this.view = "tasks";
+      this.runId = null;
+    } else this.formDirty = false;
     this.update();
   };
 
@@ -165,6 +168,7 @@ export class App extends Component {
     goRoute(r);
     this.route = r;
     this.view = "tasks";
+    this.runId = null;
     this.formDirty = false;
     this.clearError();
   }

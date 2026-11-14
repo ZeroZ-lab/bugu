@@ -773,9 +773,21 @@ func when(t time.Time) string {
 	return t.Local().Format("2006-01-02 15:04")
 }
 
+// shortDuration 去掉时长末尾为零的单位:10m0s 写成 10m,1h0m0s 写成 1h,和界面上的"±10 分钟"一致。
+func shortDuration(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = strings.TrimSuffix(s, "0s")
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = strings.TrimSuffix(s, "0m")
+	}
+	return s
+}
+
 func trigger(tr task.Trigger) string {
 	if tr.Cron != "" && tr.Jitter > 0 {
-		return fmt.Sprintf("%s ±%s", tr.Cron, time.Duration(tr.Jitter))
+		return fmt.Sprintf("%s ±%s", tr.Cron, shortDuration(time.Duration(tr.Jitter)))
 	}
 	if tr.Cron != "" {
 		return tr.Cron

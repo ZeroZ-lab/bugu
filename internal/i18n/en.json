@@ -55,6 +55,7 @@
  "bugu: 在浏览器里打开下面的网址(其中含有令牌,不要分享):\n": "bugu: open this URL in a browser (it contains the token, don't share it):\n",
  "bugu: 已创建令牌 %s。它只显示这一次,请现在保存;不用时用 bugu token revoke %s 作废\n": "bugu: created token %s. It is shown only this once, so save it now; revoke it with bugu token revoke %s when no longer needed\n",
  "bugu: 已在浏览器里打开网页面板 http://%s\n": "bugu: opened the web panel http://%s in your browser\n",
+ "bugu: 持有它的人可以建任务,也就能以你的身份在这台主机上执行任意命令。只交给你信任的机器\n": "bugu: whoever holds it can create tasks, and so can run any command on this host as you. Give it only to machines you trust\n",
  "bugu: 本机已有后台在运行,打开的是它的网页面板\n": "bugu: a backend is already running on this machine; opened its web panel\n",
  "bugu: 正在停止,进行中的运行将被终止并记为中断": "bugu: stopping; runs in progress will be stopped and marked as interrupted",
  "bugu: 注意:%s 看起来是公网上的明文 HTTP 地址。令牌和任务内容会以明文经过网络,任何能看到这些流量的人都能拿到令牌并在那台主机上执行命令。建议放在提供 HTTPS 的反向代理之后,或改用组网工具(如 Tailscale)的内网地址。\n": "bugu: warning: %s looks like a plain HTTP address on the public internet. The token and task contents cross the network unencrypted, and anyone who can see that traffic can take the token and run commands on that host. Put it behind a reverse proxy with HTTPS, or use a private address from a mesh network such as Tailscale.\n",

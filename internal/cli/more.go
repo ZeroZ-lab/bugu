@@ -138,6 +138,8 @@ func tokenCmd(e *env, args []string) error {
 		return e.show(t, func() {
 			fmt.Fprintln(e.stdout, t.Token)
 			fmt.Fprint(e.stderr, i18n.T("bugu: 已创建令牌 %s。它只显示这一次,请现在保存;不用时用 bugu token revoke %s 作废\n", t.Name, t.Name))
+			// 决策记录 0019:令牌能建任务,也就能执行任意命令,两级访问不是安全边界。
+			fmt.Fprint(e.stderr, i18n.T("bugu: 持有它的人可以建任务,也就能以你的身份在这台主机上执行任意命令。只交给你信任的机器\n"))
 		})
 	case rest[0] == "revoke" && len(rest) == 2:
 		if err := c.RevokeToken(rest[1]); err != nil {

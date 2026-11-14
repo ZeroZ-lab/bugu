@@ -85,7 +85,7 @@ bin/bugu --host nas list      # run commands against it; its panel also opens fr
 bin/bugu doctor               # check the environment
 ```
 
-The daemon only listens on `127.0.0.1:7377`. To reach a server from another machine, put an HTTPS reverse proxy in front of it, or start it with `bugu serve --listen <address>` on a private network.
+A token lets its holder create tasks, and so run any command on that host as you; give tokens only to machines you trust. The daemon only listens on `127.0.0.1:7377`. To reach a server from another machine, put an HTTPS reverse proxy in front of it, or start it with `bugu serve --listen <address>` on a private network.
 
 ## Data
 

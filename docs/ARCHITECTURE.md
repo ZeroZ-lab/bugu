@@ -34,7 +34,7 @@ bugu add / list / run / …          bugu serve
 
 命令行的全局参数可以写在任何位置:`--json` 让标准输出是接口的 JSON,出错时标准错误是 `{"error": {"code", "message"}}`,代码沿用接口的错误代码,另有 `usage`、`unavailable`、`error`(A1);`--host <名字>` 改为连接登记过的另一台主机;`--lang` 见下一节。
 
-访问令牌分两级([ADR 0015](adr/0015-tokens-and-hosts.md)):数据目录里 `token` 文件的本机令牌能访问全部接口;`bugu token create` 创建的令牌只存哈希,能管理任务,不能管理令牌和登记的主机。处理器按路径区分,`/tokens` 和 `/hosts` 只对本机令牌开放。登记的其他主机存在 `hosts.json`,命令行直接读写它,网页面板经本机后台读写;后台列出时逐个检查连接状态。在应用里打开另一台主机时,窗口载入那台主机自己的网页面板,本机不代理请求。
+访问令牌分两级([ADR 0015](adr/0015-tokens-and-hosts.md)):数据目录里 `token` 文件的本机令牌能访问全部接口;`bugu token create` 创建的令牌只存哈希,能管理任务,不能管理令牌和登记的主机。处理器按路径区分,`/tokens` 和 `/hosts` 只对本机令牌开放。这只是防误操作的分隔,不是安全边界:能建任务就能执行任意命令,所以另外创建的令牌与本机令牌同等信任([ADR 0019](adr/0019-created-tokens-run-commands.md))。登记的其他主机存在 `hosts.json`,命令行直接读写它,网页面板经本机后台读写;后台列出时逐个检查连接状态。在应用里打开另一台主机时,窗口载入那台主机自己的网页面板,本机不代理请求。
 
 `bugu daemon install` 经 `service` 把 `bugu serve` 注册为 LaunchAgent 或 systemd 用户服务。`bugu web` 在没有桌面应用的机器上启动后台并打开网页面板;本机已有后台时只打开它的面板。
 

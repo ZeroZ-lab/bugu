@@ -139,6 +139,10 @@ func TestC5TokensAndHosts(t *testing.T) {
 	t.Setenv("BUGU_HOME", remoteHome)
 	var created api.NewToken
 	jsonOK(t, &created, "token", "create", "laptop")
+	// 决策记录 0019:不用 --json 创建时,提示令牌等于能执行任意命令。
+	if code, _, errOut := bugu("token", "create", "other"); code != 0 || !strings.Contains(errOut, "执行任意命令") {
+		t.Fatalf("token create 应提示令牌能执行任意命令: %d %q", code, errOut)
+	}
 	ok(t, "add", "far", "--schedule", "0 3 * * *", "--command", "true")
 	t.Setenv("BUGU_HOME", home)
 

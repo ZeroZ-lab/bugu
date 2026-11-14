@@ -85,7 +85,8 @@ func servePage(w http.ResponseWriter, r *http.Request, name string) {
 // maxBody 是请求体的大小上限。任务定义很小,超过即视为误用。
 const maxBody = 1 << 20
 
-// Access 是一个令牌能访问到的程度(决策记录 0015)。
+// Access 是一个令牌能访问到的程度(决策记录 0015)。两级只是防误操作的分隔:
+// Shared 能建任务,也就能执行任意命令,与 Local 同等信任(决策记录 0019)。
 type Access int
 
 const (

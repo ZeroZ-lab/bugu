@@ -275,7 +275,7 @@ test("G4:运行记录按任务筛选,点一行打开详情", async ({ page, requ
   await expect(row(page, n("runs-a"))).toHaveCount(1);
   await expect(row(page, n("runs-b"))).toHaveCount(1);
 
-  await page.getByLabel("任务").selectOption(n("runs-a"));
+  await page.getByLabel("按任务").selectOption(n("runs-a"));
   await expect(row(page, n("runs-b"))).toHaveCount(0);
   await expect(row(page, n("runs-a"))).toHaveCount(1);
 
@@ -296,6 +296,11 @@ test("网址片段里的 run 直接打开那次运行的详情", async ({ page, 
   await expect(details.locator("pre").first()).toHaveText("handed-off\n");
   // 令牌和运行编号都从地址栏里拿掉了。
   expect(new URL(page.url()).hash).toBe("");
+
+  // 地址换成新建任务的页面时,详情关掉,表单能用。
+  await page.evaluate(() => (location.hash = "#/new"));
+  await expect(page.getByRole("heading", { name: "新建任务" })).toBeVisible();
+  await expect(details).toBeHidden();
 });
 
 // G6:运行还没结束时,详情里就能看到已有的输出,随后续输出增长;结束后显示完整的结果。

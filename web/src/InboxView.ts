@@ -78,7 +78,7 @@ export class InboxView extends Component<Props> {
           h(
             "table",
             { class: "clickable inbox" },
-            h("thead", null, h("tr", null, h("th", null, h("span", { class: "sr-only" }, t("未读"))), h("th", null, t("完成时间")), h("th", null, t("任务")), h("th", null, t("状态")), h("th", null, t("摘要")))),
+            h("thead", null, h("tr", null, h("th", null, h("span", { class: "sr-only" }, t("未读"))), h("th", null, t("完成时间")), h("th", null, t("任务名")), h("th", null, t("状态")), h("th", null, t("摘要")))),
             h(
               "tbody",
               null,

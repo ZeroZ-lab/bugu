@@ -63,7 +63,7 @@ export class RunsView extends Component<Props> {
         h(
           "label",
           { class: "inline" },
-          t("任务"),
+          t("按任务"),
           " ",
           h("select", { value: this.filter, onchange: (e: Event) => this.choose(value(e)) }, h("option", { value: "" }, t("全部")), this.taskNames.map((name) => h("option", { value: name }, name))),
         ),
@@ -77,7 +77,7 @@ export class RunsView extends Component<Props> {
           h(
             "table",
             { class: "clickable" },
-            h("thead", null, h("tr", null, h("th", null, t("开始时间")), h("th", null, t("任务")), h("th", null, t("状态")), h("th", null, t("退出码")), h("th", null, t("来源")), h("th", null, t("说明")))),
+            h("thead", null, h("tr", null, h("th", null, t("开始时间")), h("th", null, t("任务名")), h("th", null, t("状态")), h("th", null, t("退出码")), h("th", null, t("来源")), h("th", null, t("说明")))),
             h(
               "tbody",
               null,
