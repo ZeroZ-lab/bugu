@@ -1,0 +1,11 @@
+{
+  "name": "claude",
+  "title": "Claude Code",
+  "command": ["claude", "-p"],
+  "prompt_via": "stdin",
+  "permissions": {
+    "read_only": ["--permission-mode", "dontAsk", "--disallowedTools", "Edit,Write,NotebookEdit"],
+    "write_cwd": ["--permission-mode", "acceptEdits"]
+  },
+  "check": ["claude", "--version"]
+}

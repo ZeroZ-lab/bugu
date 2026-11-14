@@ -1,0 +1,11 @@
+{
+  "name": "codex",
+  "title": "Codex",
+  "command": ["codex", "exec", "--skip-git-repo-check"],
+  "prompt_via": "stdin",
+  "permissions": {
+    "read_only": ["--sandbox", "read-only"],
+    "write_cwd": ["--sandbox", "workspace-write"]
+  },
+  "check": ["codex", "--version"]
+}

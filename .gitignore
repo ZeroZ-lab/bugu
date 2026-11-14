@@ -1,0 +1,7 @@
+/bin/
+/dist/
+/.mygo/
+/repos/
+.DS_Store
+/web/node_modules/
+/web/e2e/.results/
