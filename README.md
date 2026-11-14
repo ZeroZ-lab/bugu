@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A desktop-first scheduled task app. Have command-line agents such as Claude Code, Codex and Pi, or plain scripts, do work on a schedule and bring the results to you, without writing config files.
+A desktop-first scheduled task app. Run scripts and command-line AI agents such as Claude Code, Codex and Pi on a schedule, and collect the results in an inbox. Tasks are set up from a form or a single command.
 
 The name comes from the cuckoo (布谷, *bùgǔ*), the bird that calls out the hour.
 
@@ -10,62 +10,69 @@ The name comes from the cuckoo (布谷, *bùgǔ*), the bird that calls out the h
 
 ## Features
 
-- **Three ways in**: a desktop app that lives in the menu bar, a web panel, and a CLI. All of them talk to the same daemon.
+- **Desktop app, web panel and CLI**: the desktop app lives in the menu bar; all three talk to the same daemon.
 - **Scripts and AI CLIs**: run a command, a script file, an AI CLI with a prompt, or several of them as steps that pass output along.
-- **Schedules without cron**: pick "every weekday at 09:00" from a form, or type a cron expression if you prefer. Each run can start at a random offset around the set time.
-- **Results come to you**: every run lands in an inbox, with Markdown output rendered. Optional system notifications and webhooks.
-- **Safe by default**: AI CLIs run read-only unless you allow more. Secrets in env files are hidden in output, logs and notifications.
-- **Remote hosts**: manage a Bugu running on a server from your laptop, with per-machine tokens.
+- **Schedules without cron**: pick "weekdays at 09:00" from a form, or type a cron expression. Each run can start at a random offset around the set time.
+- **Results in one place**: every run lands in an inbox with Markdown output rendered. Optional system notifications and webhooks.
+- **Safe by default**: AI CLIs run read-only unless you allow more. Secrets from env files are hidden in output, logs and notifications.
+- **Remote hosts**: manage a Bugu running on a server from your own computer, with a separate token for each machine.
 
-Pick a schedule instead of writing cron:
+## Requirements
 
-![New task form](docs/images/en/new-task.png)
-
-Every run's results go to the inbox:
-
-![Inbox](docs/images/en/inbox.png)
-
-A multi-step run shows each step's status:
-
-![Run details](docs/images/en/run.png)
+- macOS or Linux. The desktop app is macOS only; on Linux, use the web panel and the CLI.
+- Go 1.27.3 or later to build. There are no prebuilt binaries yet.
+- For AI tasks, the AI CLI itself (Claude Code, Codex, Pi or another), installed and signed in. Bugu only starts it.
 
 ## Build
 
-Requires Go 1.27 or later.
-
 ```sh
-make build    # produces bin/bugu
-make app      # packages the desktop app into dist/ (macOS)
+make build            # bin/bugu
+make build-headless   # bin/bugu-headless, without the desktop app, for servers and containers
+make app              # the macOS app bundle in dist/
 ```
+
+`make app` signs the bundle for this machine only; other Macs will block it unless you configure a Developer ID. System notifications only appear from the packaged app.
 
 ## Getting started
 
 ### Desktop app
 
-Run `bin/bugu app`, or open the app bundle produced by `make app`. Closing the window leaves it in the menu bar, and tasks keep running.
+Run `bin/bugu app`, or open the bundle from `make app`. Closing the window leaves it in the menu bar, and tasks keep running.
 
 ### Command line
 
+Without the desktop app, start the daemon in its own terminal:
+
 ```sh
-bin/bugu serve                # start the daemon (not needed while the desktop app is open)
+bin/bugu serve
+```
+
+Then, in another terminal:
+
+```sh
 bin/bugu add backup --schedule "0 2 * * *" --command "~/bin/backup.sh"
 bin/bugu list
 bin/bugu run backup           # try it now instead of waiting for 2 a.m.
 bin/bugu runs
 bin/bugu logs <run-id>
+bin/bugu inbox                # unread results
 ```
 
 ### AI CLIs
 
+Bugu starts AI CLIs through runners. Claude Code, Codex and Pi are built in; add others with `bugu runner add`.
+
 ```sh
 bin/bugu runner check         # which AI CLIs are installed here and whether they start
-bin/bugu add issues --schedule "0 9 * * 1-5" --runner claude --cwd ~/projects/site \
-  --prompt "List new issues since {last_run} and sort them into bugs, feature requests and questions."
+bin/bugu add standup --schedule "0 9 * * 1-5" --runner claude --cwd ~/notes \
+  --prompt "Read the notes in this folder and list the three things to do today."
 ```
 
-AI CLIs run read-only by default; add `--permission write_cwd` when one really needs to change files.
+AI CLIs run read-only by default. When a task really needs to change files, add `--permission write_cwd` or `--permission full`; `bugu runner list` shows the levels each runner supports.
 
-To let your own AI agent create tasks, save the output of `bin/bugu skill` as that agent's skill file (for Claude Code, `~/.claude/skills/bugu/SKILL.md`). It will then use `bugu ... --json` to create tasks, try them and read the results.
+To let your own AI agent create tasks, save the output of `bin/bugu skill --lang en` as that agent's skill file (for Claude Code, `~/.claude/skills/bugu/SKILL.md`). It will then use `bugu ... --json` to create tasks, try them and read the results.
+
+![New task form](docs/images/en/new-task.png)
 
 ### Servers and remote hosts
 
@@ -78,9 +85,27 @@ bin/bugu --host nas list      # run commands against it; its panel also opens fr
 bin/bugu doctor               # check the environment
 ```
 
-The interface and CLI messages are available in English and Chinese: run `bin/bugu language en`, or choose on the settings page.
+The daemon only listens on `127.0.0.1:7377`. To reach a server from another machine, put an HTTPS reverse proxy in front of it, or start it with `bugu serve --listen <address>` on a private network.
+
+## Data
+
+Everything lives in `~/.bugu` as plain files: tasks, run history and output, tokens and registered hosts. Set `BUGU_HOME` to use another folder. Custom runners go in its `runners/` folder.
+
+## Language
+
+The interface is available in English and Chinese: choose on the settings page, or run `bugu language en`. CLI messages follow your locale (`LANG`); pass `--lang en` to override.
 
 Run `bin/bugu help` for all commands.
+
+## Screenshots
+
+Every run's results go to the inbox:
+
+![Inbox](docs/images/en/inbox.png)
+
+A multi-step run, with a script step and an AI CLI step:
+
+![Run details](docs/images/en/run.png)
 
 ## Development
 

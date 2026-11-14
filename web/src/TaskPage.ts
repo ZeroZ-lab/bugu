@@ -317,7 +317,7 @@ class TaskFormView extends Component<FormProps> {
                 h(
                   "select",
                   { value: f.runner, onchange: (e: Event) => this.chooseRunner(value(e)) },
-                  usable.map((r) => h("option", { value: r.name }, r.title ? `${r.title}(${r.name})` : r.name)),
+                  usable.map((r) => h("option", { value: r.name }, r.title ? t("{title}({name})", { title: r.title, name: r.name }) : r.name)),
                   runnerMissing && h("option", { value: f.runner }, t("{runner}(找不到这个运行器)", { runner: f.runner })),
                 ),
               ),

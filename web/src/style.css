@@ -39,7 +39,8 @@ code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
 .tab { border: 0; background: none; padding: 6px 10px; border-radius: 6px; color: var(--muted); }
 .tab:hover { color: var(--text); }
 .tab.active { background: var(--hover); color: var(--text); font-weight: 600; }
-main { max-width: 1040px; margin: 0 auto; padding: 24px 20px 48px; }
+/* 1120:任务表在英文界面下最长的一行(工作日加随机偏移、昨天的上次结果)也放得下,名称列还留有余地。 */
+main { max-width: 1120px; margin: 0 auto; padding: 24px 20px 48px; }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .muted { color: var(--muted); }
 .empty { color: var(--muted); padding: 36px 0; text-align: center; }
@@ -200,7 +201,7 @@ button.icon:disabled { opacity: .35; cursor: default; }
 }
 .narrow-only { display: none; }
 /* 任务表列多:窗口不够宽时每一行变成一张小卡片,名字和触发、状态和下次运行、上次结果、操作各占一行。 */
-@media (max-width: 1060px) {
+@media (max-width: 1140px) {
   table.tasks, table.tasks tbody { display: block; }
   table.tasks thead { display: none; }
   table.tasks tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }

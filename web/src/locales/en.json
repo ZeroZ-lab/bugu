@@ -20,6 +20,7 @@
  "{target}:第 {n} 次没有送达,{time} 重试。{error}": "{target}: attempt {n} wasn't delivered; retrying at {time}. {error}",
  "{text} ±{n} 分钟": "{text} ±{n} min",
  "{text} ±{n} 秒": "{text} ±{n} s",
+ "{title}({name})": "{title} ({name})",
  "、": ", ",
  "一条命令": "A command",
  "一次 {time}": "Once at {time}",

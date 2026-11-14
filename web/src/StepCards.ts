@@ -95,7 +95,7 @@ export class StepCards extends Component<Props> {
                 this.patchStep(i, { runner: value(e), permission: next.includes(s.permission) ? s.permission : (next[0] ?? "") });
               },
             },
-            usable.map((r) => h("option", { value: r.name }, r.title ? `${r.title}(${r.name})` : r.name)),
+            usable.map((r) => h("option", { value: r.name }, r.title ? t("{title}({name})", { title: r.title, name: r.name }) : r.name)),
             s.runner && !usable.some((r) => r.name === s.runner) && h("option", { value: s.runner }, t("{runner}(找不到这个运行器)", { runner: s.runner })),
           ),
         ),
