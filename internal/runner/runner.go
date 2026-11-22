@@ -88,12 +88,12 @@ func Validate(r Runner) error {
 	}
 	for level := range r.Permissions {
 		if _, ok := task.PermissionRank(level); !ok {
-			return i18n.Errorf("permissions 里的级别 %q 不合法,可用的是 %s", level, strings.Join(task.Permissions, "、"))
+			return i18n.Errorf("permissions 里的级别 %q 不合法,可用的是 %s", level, strings.Join(task.Permissions, ", "))
 		}
 	}
 	if r.MaxPermission != "" {
 		if _, ok := task.PermissionRank(r.MaxPermission); !ok {
-			return i18n.Errorf("max_permission %q 不合法,可用的是 %s", r.MaxPermission, strings.Join(task.Permissions, "、"))
+			return i18n.Errorf("max_permission %q 不合法,可用的是 %s", r.MaxPermission, strings.Join(task.Permissions, ", "))
 		}
 	}
 	return nil
@@ -130,10 +130,10 @@ func (r Runner) Level(requested string) (string, error) {
 	}
 	rank, ok := task.PermissionRank(level)
 	if !ok {
-		return "", i18n.Errorf("权限级别 %q 不合法,可用的是 %s", level, strings.Join(task.Permissions, "、"))
+		return "", i18n.Errorf("权限级别 %q 不合法,可用的是 %s", level, strings.Join(task.Permissions, ", "))
 	}
 	if _, declared := r.Permissions[level]; !declared {
-		return "", i18n.Errorf("运行器 %s 不支持权限级别 %s,它支持的是 %s", r.Name, level, strings.Join(r.Levels(), "、"))
+		return "", i18n.Errorf("运行器 %s 不支持权限级别 %s,它支持的是 %s", r.Name, level, strings.Join(r.Levels(), ", "))
 	}
 	if max, limited := task.PermissionRank(r.MaxPermission); limited && rank > max {
 		return "", i18n.Errorf("运行器 %s 在这台主机上最高只允许 %s,任务要求的是 %s", r.Name, r.MaxPermission, level)

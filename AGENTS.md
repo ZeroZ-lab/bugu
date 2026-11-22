@@ -20,10 +20,10 @@
 
 ## 硬规则
 
-每条都有对应的检查,见 `internal/archtest`。
+每条都有对应的检查,规则在 `internal/archlint`,由 `internal/archtest` 对仓库运行。
 
 1. 构建时 `CGO_ENABLED=0`。
-2. 包之间的依赖只能按 `internal/archtest` 里的允许表走。新增包要先登记。`cli` 通过 `client` 访问后台,只在启动后台时引用 `daemon`。
+2. 包之间的依赖只能按 `internal/archlint/rules.go` 里的允许表走。新增包要先登记。`cli` 通过 `client` 访问后台,只在启动后台时引用 `daemon`。
 3. AI 厂商和产品的名字只出现在 `runners/` 的配置文件里。Go 代码按"运行器"这个抽象工作。
 4. 需要当前时间、等待、定时的代码,一律通过 `internal/clock` 注入的时钟。
 5. 测试的通过与否不取决于真实时间:用假时钟推进,用计数而不是耗时来衡量。

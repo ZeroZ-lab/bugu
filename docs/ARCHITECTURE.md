@@ -53,11 +53,11 @@ bugu add / list / run / …          bugu serve
 | `i18n` | 界面文字的中英文:当前语言、翻译、显示时才翻译的错误 | 无 |
 | `clock` | 时钟接口、真实时钟、测试用假时钟 | 无 |
 | `task` | 数据模型:任务、触发、步骤、运行 | `i18n` |
-| `schedule` | 给定任务和当前时间,决定现在该触发什么。纯函数,不执行、不落盘 | `clock` `task` `i18n` |
+| `schedule` | 给定任务和当前时间,决定现在该触发什么。纯函数核心,不执行、不落盘 | `clock` `task` `i18n` |
 | `runner` | 读取运行器配置,把 AI 命令行步骤渲染成要执行的命令,展开模板变量。不启动进程 | `task` `i18n`,以及仓库根目录的 `runners`(预设) |
 | `exec` | 预检、经登录 shell 启动进程、超时、终止进程树、采集输出、检查运行器能否使用;演练(只列出将执行的命令) | `clock` `task` `runner` `i18n` `api` |
 | `store` | 任务文件、运行存档、调度进度、设置、令牌文件的持久化,数据目录的独占锁 | `clock` `task` `i18n` |
-| `notify` | 决定一次运行要不要通知、通知写什么。纯函数,不负责显示 | `clock` `task` `i18n` |
+| `notify` | 决定一次运行要不要通知、通知写什么。纯函数核心,不负责显示 | `clock` `task` `i18n` |
 | `api` | HTTP 接口的请求与响应类型,以及客户端和后台共同约定的文件名。只有类型和常量,以及接口错误按语言说明的方式 | `task` `i18n` |
 | `server` | HTTP 处理器、来源校验、令牌认证。通过自己定义的 `Backend` 接口调用后台 | `api` 与上面全部 |
 | `daemon` | 引擎(触发、运行管理、通知投递、令牌、登记的主机,实现 `server.Backend`),并把以上各部分组装成一个运行中的后台 | `server` `deliver` `hosts` 与上面全部 |
@@ -68,9 +68,12 @@ bugu add / list / run / …          bugu serve
 | `service` | 把后台注册为当前用户的系统服务(launchd、systemd);外部命令经注入的函数执行 | `i18n` |
 | `cli` | 子命令。通过 `client` 工作;仅在启动后台时引用 `daemon`,仅在打开桌面应用时引用 `gui` | `client` `api` `task` `daemon` `gui` `i18n` `hosts` `service` |
 | `fakeagent` | 测试用的假 agent,一个独立的小程序 | 无 |
-| `archtest` | 架构检查,只有测试 | 无 |
+| `archlint` | 架构规则:允许表和各条规则的 go/analysis 分析器,以及在每个平台和 headless 构建下对整个模块运行它们的 `Run` | 无 |
+| `archtest` | 只有测试:对仓库运行 `archlint`,随 `make test` 执行 | `archlint` |
 
-"可以引用"一栏以 `internal/archtest/archtest_test.go` 里的允许表为准,两处须保持一致。
+"可以引用"一栏以 `internal/archlint/rules.go` 里的允许表为准,两处须保持一致。标为纯函数核心的包(同一文件的 `Pure`)不能引用读写文件、启动进程、联网或取随机数的标准库包,测试文件除外。
+
+架构规则由 `archlint` 按类型信息检查:依赖方向、cgo、桌面框架的位置、厂商名、绕过 `clock` 的时间函数、纯函数核心、给人看的中文能否翻译。不在当前平台编译的文件靠多种构建配置覆盖,任何配置都不编译的文件按语法检查。每条规则在 `internal/archlint/testdata/mod` 里有一处故意的违反,测试要求恰好报告这些。
 
 仓库根目录的 `runners/` 不在 `internal/` 下:它存放自带的运行器预设,加一个把它们嵌入程序的 Go 文件。厂商和产品的名字只出现在这里的配置文件里。`skills/` 同样在根目录:教 AI agent 使用 bugu 的技能说明(中英文各一份),嵌入程序,由 `bugu skill` 打印。
 

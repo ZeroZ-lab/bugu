@@ -1,0 +1,3 @@
+package mygo
+
+func Run() {}
